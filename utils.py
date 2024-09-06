@@ -1,9 +1,9 @@
 import os
 import numpy as np
 from math import log
+from typing import List
 from functools import reduce
 from numpy.linalg import norm
-from typing import List, Union
 from fractions import Fraction
 from scipy.linalg import sqrtm
 from scipy.sparse import csr_matrix
@@ -95,7 +95,7 @@ def random_qudits(dim: int, n_qudits: int, ndim: int = 1) -> np.ndarray:
     return qudits
 
 
-def str_special(param: Union[str, int, float]) -> str:
+def str_special(param: str | int | float) -> str:
     '''Return a special string form of the parameter.'''
     special = {'': 1, 'π': np.pi, '√2': np.sqrt(2), '√3': np.sqrt(3), '√5': np.sqrt(5)}
     if isinstance(param, (int, str)):

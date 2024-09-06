@@ -1,3 +1,4 @@
+import torch
 import numpy as np
 import pennylane as qml
 from typing import List
@@ -17,7 +18,7 @@ def circ_ind(ind: List[int], obj: List[int]):
         qml.X(obj[1])
 
 
-def circ_zyz(pr, obj: List[int]):
+def circ_zyz(pr: torch.Tensor | np.ndarray, obj: List[int]):
     qml.CRZ(pr[0], [obj[0], obj[1]])
     qml.CRY(pr[1], [obj[0], obj[1]])
     qml.CRZ(pr[2], [obj[0], obj[1]])
@@ -62,7 +63,7 @@ def circ_ctrl_gate(name: str, pr: float, obj: int, ctrl: List[int]):
         raise ValueError(f'Wrong input name of rotation gate {name}')
 
 
-def two_level_unitary_synthesis(dim: int, pr, ind: List[int], obj: List[int]):
+def two_level_unitary_synthesis(dim: int, pr: torch.Tensor | np.ndarray, ind: List[int], obj: List[int]):
     if dim != 3:
         raise ValueError('Only works when dim = 3')
     if len(pr) != 3:
@@ -80,7 +81,7 @@ def two_level_unitary_synthesis(dim: int, pr, ind: List[int], obj: List[int]):
     qml.adjoint(circ_ind, lazy=False)(ind, obj)
 
 
-def single_qutrit_unitary_synthesis(dim: int, pr, obj: List[int]):
+def single_qutrit_unitary_synthesis(dim: int, pr: torch.Tensor | np.ndarray, obj: List[int]):
     if dim != 3:
         raise ValueError('Only works when dim = 3')
     if len(pr) != 9:
@@ -93,7 +94,7 @@ def single_qutrit_unitary_synthesis(dim: int, pr, obj: List[int]):
         two_level_unitary_synthesis(dim, pr[i], ind, obj)
 
 
-def controlled_rotation_synthesis(dim: int, pr, state: int, obj: int, ctrl: List[int], ind: List[int], name: str = 'RY'):
+def controlled_rotation_synthesis(dim: int, pr: torch.Tensor | np.ndarray, state: int, obj: int, ctrl: List[int], ind: List[int], name: str = 'RY'):
     if dim != 3:
         raise ValueError('Only works when dim = 3')
     ctrl_state = list(range(dim))
@@ -114,7 +115,7 @@ def controlled_rotation_synthesis(dim: int, pr, state: int, obj: int, ctrl: List
     qml.adjoint(circ_ctrl_state, lazy=False)(state, ctrl)
 
 
-def controlled_diagonal_synthesis(dim: int, pr, state: int, obj: int, ctrl: List[int]):
+def controlled_diagonal_synthesis(dim: int, pr: torch.Tensor | np.ndarray, state: int, obj: int, ctrl: List[int]):
     if dim != 3:
         raise ValueError('Only works when dim = 3')
     ctrl_state = list(range(dim))
@@ -133,7 +134,7 @@ def controlled_diagonal_synthesis(dim: int, pr, state: int, obj: int, ctrl: List
     qml.adjoint(circ_ctrl_state, lazy=False)(state, ctrl)
 
 
-def two_qutrit_unitary_synthesis(dim: int, pr, obj: List[int]):
+def two_qutrit_unitary_synthesis(dim: int, pr: torch.Tensor | np.ndarray, obj: List[int]):
     if dim != 3:
         raise ValueError('Only works when dim = 3')
     if len(pr) != 102:

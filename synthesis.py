@@ -3,6 +3,9 @@ import numpy as np
 import pennylane as qml
 from typing import List
 
+NUM_PR = 102
+DTYPE = np.float64
+CDTYPE = np.complex128
 
 def circ_ind(ind: List[int], obj: List[int]):
     if ind == [0, 1]:
@@ -137,8 +140,8 @@ def controlled_diagonal_synthesis(dim: int, pr: torch.Tensor | np.ndarray, state
 def two_qutrit_unitary_synthesis(dim: int, pr: torch.Tensor | np.ndarray, obj: List[int]):
     if dim != 3:
         raise ValueError('Only works when dim = 3')
-    if len(pr) != 102:
-        raise ValueError(f'The number of params {len(pr)} should be 102')
+    if len(pr) != NUM_PR:
+        raise ValueError(f'The number of params {len(pr)} should be {NUM_PR}')
     if len(obj) != 4:
         raise ValueError(f'The number of object qubits {len(obj)} should be 4')
     single_qutrit_unitary_synthesis(dim, pr[0:9], obj[2:])  # U1 pr:9

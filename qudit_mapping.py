@@ -1,4 +1,3 @@
-import torch
 import numpy as np
 from utils import is_power_of_two
 from scipy.sparse import csr_matrix

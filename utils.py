@@ -1,5 +1,4 @@
 import os
-import torch
 import numpy as np
 from math import log
 from typing import List

@@ -58,7 +58,7 @@ def is_hermitian(mat: np.ndarray) -> bool:
         raise ValueError(f'Wrong matrix shape {mat.shape}')
 
 
-def approx_matrix(mat: np.ndarray, tol: float = 1e-15):
+def approx_matrix(mat: np.ndarray, tol: float = 1e-15) -> np.ndarray:
     '''Return an approximation of the matrix.'''
     if np.iscomplexobj(mat):
         mat_real = np.real(mat)

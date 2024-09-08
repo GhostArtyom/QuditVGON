@@ -7,6 +7,7 @@ NUM_PR = 102
 DTYPE = np.float64
 CDTYPE = np.complex128
 
+
 def circ_ind(ind: List[int], obj: List[int]):
     if ind == [0, 1]:
         qml.CNOT([obj[0], obj[1]])

@@ -7,7 +7,7 @@ from utils import updatemat
 from logging import info, INFO, basicConfig
 from qutrit_synthesis import NUM_PR, two_qutrit_unitary_synthesis
 
-basicConfig(filename='./logs/benchmark.log', format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S', level=INFO)
+basicConfig(filename='./logs/testVQE.log', format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S', level=INFO)
 
 
 def spin_operator(obj: List[int]):
@@ -46,25 +46,25 @@ def qutrit_symmetric_ansatz(n_qudits: int, params: torch.Tensor, Ham):
     return qml.expval(Ham)
 
 
-def running(n_qudits: int, epochs: int, device: torch.device):
+def running(n_qudits: int, beta: float, epochs: int):
     n_qubits = 2 * n_qudits
     dev = qml.device('default.qubit', n_qubits)
     info(f'Number of qudits: {n_qudits}')
     info(f'Number of qubits: {n_qubits}')
+    info(f'Number of epochs: {epochs}')
 
-    if torch.cuda.is_available() and n_qubits >= 14:
+    if torch.cuda.is_available() and n_qubits > 14:
         device = torch.device('cuda')
     else:
         device = torch.device('cpu')
     info(f'PyTorch Device: {device}')
 
-    np.random.seed(42)
     pr_num = (n_qudits - 1) * NUM_PR
     init_params = np.random.uniform(-np.pi, np.pi, pr_num)
     params = torch.tensor(init_params, device=device, requires_grad=True)
     cost_fn = qml.QNode(qutrit_symmetric_ansatz, dev, interface='torch')
     optimizer = torch.optim.Adam([params], lr=0.1)
-    Ham = Hamiltonian(n_qudits, beta=-1 / 3)
+    Ham = Hamiltonian(n_qudits, beta)
 
     start = time.perf_counter()
     for epoch in range(epochs):
@@ -75,13 +75,17 @@ def running(n_qudits: int, epochs: int, device: torch.device):
         count = epoch + 1
         if count % 10 == 0:
             t = time.perf_counter() - start
-            info(f'{count:3d}/{epochs}, Loss: {loss.item():.20f}, {t:.2f}')
-    params_res = optimizer.param_groups[0]['params'][0].detach()
-    mat_dict = {f'nqd={n_qudits}_{device.type}': params_res}
-    updatemat('./mats/benchmark.mat', mat_dict)
+            print(f'Loss: {loss.item():.20f}, {count}/{epochs}, {t:.2f}')
+            info(f'Loss: {loss.item():.20f}, {count}/{epochs}, {t:.2f}')
+
+    loss_res = loss.detach().cpu()
+    params_res = optimizer.param_groups[0]['params'][0].detach().cpu()
+    nqd_time = f'nqd{n_qudits}_{epochs}_{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}'
+    mat_dict = {f'loss_{nqd_time}': loss_res, f'pr_{nqd_time}': params_res}
+    updatemat('./mats/testVQE.mat', mat_dict)
 
 
-epochs = 100
-for n_qudits in range(2, 10):
-    running(n_qudits, epochs, device=torch.device('cpu'))
-    running(n_qudits, epochs, device=torch.device('cuda'))
+# n_qudits, beta, epochs = 4, -0.3, 500
+n_qudits, beta = 4, -0.3
+for epochs in [500, 1000, 1500, 2000]:
+    running(n_qudits, beta, epochs)

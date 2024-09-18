@@ -13,27 +13,30 @@ basicConfig(filename='./logs/testVQE.log', format='%(asctime)s %(message)s', dat
 def spin_operator(obj: List[int]):
     if len(obj) != 2:
         raise ValueError(f'The number of object qubits {len(obj)} should be 2')
-    sx = qml.X(obj[0]) / 2 + qml.X(obj[1]) / 2
-    sy = qml.Y(obj[0]) / 2 + qml.Y(obj[1]) / 2
-    sz = qml.Z(obj[0]) / 2 + qml.Z(obj[1]) / 2
-    return sx + sy + sz
+    sx = qml.X(obj[0]) + qml.X(obj[1])
+    sy = qml.Y(obj[0]) + qml.Y(obj[1])
+    sz = qml.Z(obj[0]) + qml.Z(obj[1])
+    return sx, sy, sz
 
 
 def spin_operator2(obj: List[int]):
     if len(obj) != 2:
         raise ValueError(f'The number of object qubits {len(obj)} should be 2')
-    s1 = qml.X(obj[0]) + qml.Y(obj[0]) + qml.Z(obj[0])
-    s2 = qml.X(obj[1]) + qml.Y(obj[1]) + qml.Z(obj[1])
-    return 3 / 2 * qml.I(obj) + (s1 @ s2) / 2
+    s1 = spin_operator(obj)
+    s2 = [i @ j for i in s1 for j in s1]
+    return s2
 
 
 def Hamiltonian(n_qudits: int, beta: float):
-    Ham = 0
+    ham1, ham2 = 0, 0
     for i in range(n_qudits - 1):
         obj1 = [2 * i, 2 * i + 1]
         obj2 = [2 * i + 2, 2 * i + 3]
-        Ham += spin_operator(obj1) @ spin_operator(obj2)
-        Ham -= beta * (spin_operator2(obj1) @ spin_operator2(obj2))
+        for j in range(3):
+            ham1 += spin_operator(obj1)[j] @ spin_operator(obj2)[j]
+        for k in range(9):
+            ham2 += spin_operator2(obj1)[k] @ spin_operator2(obj2)[k]
+    Ham = ham1 / 4 - beta * ham2 / 16
     return Ham
 
 
@@ -81,13 +84,23 @@ def running(n_qudits: int, beta: float, epochs: int, lr: float):
     loss_res = loss.detach().cpu()
     params_res = optimizer.param_groups[0]['params'][0].detach().cpu()
     time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
-    mat_dict = {'n_qudits': n_qudits, 'n_qubits': n_qubits, 'beta': beta, 'epochs': epochs, \
-    'learning_rate': lr, 'params_init': init_params, 'params_res': params_res, 'loss': loss_res}
-    updatemat(f'./mats/testVQE_{time_str}.mat', mat_dict)
+    mat_dict = {
+        f'T{time_str}': {
+            'n_qudits': n_qudits,
+            'n_qubits': n_qubits,
+            'beta': beta,
+            'epochs': epochs,
+            'learning_rate': lr,
+            'params_init': init_params,
+            'params_res': params_res,
+            'loss': loss_res
+        }
+    }
+    updatemat(f'./mats/testVQE.mat', mat_dict)
 
 
 n_qudits, beta, epochs = 4, -0.3, 1000
-for lr in [0.1, 0.05, 0.01]:
-    for r in range(3):
-        info(f'Reapt: {r+1}, learning rate: {lr}')
+for r in range(2):
+    for lr in [1e-3, 5e-3, 1e-4]:
+        info(f'Repeat: {r+1}, Learning Rate: {lr}')
         running(n_qudits, beta, epochs, lr)

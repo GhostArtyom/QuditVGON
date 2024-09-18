@@ -13,6 +13,13 @@ DTYPE = np.float64
 CDTYPE = np.complex128
 
 
+def tensor_product(*args: tuple | list):
+    '''Return the tensor product of a tuple or list of matrices.'''
+    if isinstance(args[0], list) and len(args) == 1:
+        args = args[0]
+    return reduce(np.kron, args)
+
+
 def updatemat(name: str, save: dict):
     '''Update the mat file.'''
     if os.path.exists(name):

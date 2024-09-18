@@ -34,7 +34,7 @@ def Hamiltonian(n_qudits: int, beta: float):
         obj2 = [2 * i + 2, 2 * i + 3]
         Ham += spin_operator(obj1) @ spin_operator(obj2)
         Ham -= beta * (spin_operator2(obj1) @ spin_operator2(obj2))
-    return qml.simplify(Ham)
+    return Ham
 
 
 def qutrit_symmetric_ansatz(n_qudits: int, params: torch.Tensor, Ham):

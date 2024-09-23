@@ -6,8 +6,8 @@ from functools import reduce
 from numpy.linalg import norm
 from fractions import Fraction
 from scipy.linalg import sqrtm
-from scipy.sparse import csr_matrix
 from scipy.io import loadmat, savemat
+from scipy.sparse import kron, csr_matrix
 
 DTYPE = np.float64
 CDTYPE = np.complex128
@@ -18,6 +18,13 @@ def tensor_product(*args: tuple | list):
     if isinstance(args[0], list) and len(args) == 1:
         args = args[0]
     return reduce(np.kron, args)
+
+
+def tensor_product_sparse(*args: tuple | list):
+    '''Return the sparse tensor product of a tuple or list of sparse matrices.'''
+    if isinstance(args[0], list) and len(args) == 1:
+        args = args[0]
+    return reduce(kron, args)
 
 
 def updatemat(name: str, save: dict):

@@ -1,13 +1,28 @@
+import sys
 import time
 import torch
+import logging
 import numpy as np
 import pennylane as qml
 from typing import List
+from logging import info
 from utils import updatemat
-from logging import info, INFO, basicConfig
 from qutrit_synthesis import NUM_PR, two_qutrit_unitary_synthesis
 
-basicConfig(filename='./logs/testVQE.log', format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S', level=INFO)
+n_layers = 2
+n_qudits = 4
+beta = -1 / 3
+epochs = 1000
+
+n_qubits = 2 * n_qudits
+dev = qml.device('default.qubit', n_qubits)
+if torch.cuda.is_available() and n_qubits > 14:
+    device = torch.device('cuda')
+else:
+    device = torch.device('cpu')
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
 def spin_operator(obj: List[int]):
@@ -40,49 +55,64 @@ def Hamiltonian(n_qudits: int, beta: float):
     return Ham
 
 
-def qutrit_symmetric_ansatz(n_qudits: int, params: torch.Tensor, Ham):
-    params = params.reshape(n_qudits - 1, NUM_PR)
+def qutrit_symmetric_ansatz(n_layers:int, n_qudits: int, params: torch.Tensor):
+    params = params.reshape(n_layers, n_qudits - 1, NUM_PR)
     n_qubits = 2 * n_qudits
-    for i in range(n_qudits - 1):
-        obj = list(range(n_qubits - 2 * i - 4, n_qubits - 2 * i))
-        two_qutrit_unitary_synthesis(params[i], obj)
+    for i in range(n_layers):
+        for j in range(n_qudits - 1):
+            obj = list(range(n_qubits - 2 * j - 4, n_qubits - 2 * j))
+            two_qutrit_unitary_synthesis(params[i][j], obj)
+
+
+@qml.qnode(dev, interface='torch', diff_method='best')
+def circuit_state(n_layers: int, n_qudits: int, params: torch.Tensor):
+    qutrit_symmetric_ansatz(n_layers, n_qudits, params)
+    return qml.state()
+
+
+@qml.qnode(dev, interface='torch', diff_method='best')
+def circuit_expval(n_layers: int, n_qudits: int, params: torch.Tensor, Ham):
+    qutrit_symmetric_ansatz(n_layers, n_qudits, params)
     return qml.expval(Ham)
 
 
-def running(n_qudits: int, beta: float, epochs: int, lr: float):
-    n_qubits = 2 * n_qudits
-    dev = qml.device('default.qubit', n_qubits)
-    info(f'Coefficient beta: {beta}')
+def running(n_layers: int, n_qudits: int, beta: float, epochs: int, lr: float):
+    filename = f'./logs/testVQE_nqd{n_qudits}_beta{beta:.4f}_lr{lr}.log'
+    file_handler = logging.FileHandler(filename)
+    file_handler.setLevel(logging.INFO)
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s %(message)s')
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    logger.addHandler(stream_handler)
+
+    info(f'Repeat: {r+1}, Learning Rate: {lr}')
+    info(f'Coefficient beta: {beta:.4f}')
     info(f'Number of qudits: {n_qudits}')
     info(f'Number of qubits: {n_qubits}')
-
-    if torch.cuda.is_available() and n_qubits > 14:
-        device = torch.device('cuda')
-    else:
-        device = torch.device('cpu')
     info(f'PyTorch Device: {device}')
 
-    pr_num = (n_qudits - 1) * NUM_PR
-    init_params = np.random.uniform(-np.pi, np.pi, pr_num)
-    params = torch.tensor(init_params, device=device, requires_grad=True)
-    cost_fn = qml.QNode(qutrit_symmetric_ansatz, dev, interface='torch')
+    n_params = n_layers * (n_qudits - 1) * NUM_PR
+    params_init = np.random.uniform(-np.pi, np.pi, n_params)
+    params = torch.tensor(params_init, device=device, requires_grad=True)
     optimizer = torch.optim.Adam([params], lr=lr)
     Ham = Hamiltonian(n_qudits, beta)
 
     start = time.perf_counter()
     for epoch in range(epochs):
-        optimizer.zero_grad()
-        loss = cost_fn(n_qudits, params, Ham)
+        optimizer.zero_grad(set_to_none=True)
+        loss = circuit_expval(n_layers, n_qudits, params, Ham)
         loss.backward()
         optimizer.step()
         count = epoch + 1
         if count % 10 == 0:
             t = time.perf_counter() - start
-            print(f'Loss: {loss.item():.20f}, {count}/{epochs}, {t:.2f}')
             info(f'Loss: {loss.item():.20f}, {count}/{epochs}, {t:.2f}')
 
     loss_res = loss.detach().cpu()
     params_res = optimizer.param_groups[0]['params'][0].detach().cpu()
+    state_res = circuit_state(n_layers, n_qudits, params_res)
     time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
     mat_dict = {
         f'T{time_str}': {
@@ -91,16 +121,19 @@ def running(n_qudits: int, beta: float, epochs: int, lr: float):
             'beta': beta,
             'epochs': epochs,
             'learning_rate': lr,
-            'params_init': init_params,
+            'params_init': params_init,
             'params_res': params_res,
-            'loss': loss_res
+            'state_res': state_res,
+            'loss_res': loss_res
         }
     }
-    updatemat(f'./mats/testVQE.mat', mat_dict)
+    mat_path = f'./mats/testVQE.mat'
+    updatemat(mat_path, mat_dict)
+    info(f'Save: {mat_path} T{time_str}')
+    logger.removeHandler(file_handler)
+    logger.removeHandler(stream_handler)
 
 
-n_qudits, beta, epochs = 4, -0.3, 1000
-for r in range(2):
-    for lr in [1e-3, 5e-3, 1e-4]:
-        info(f'Repeat: {r+1}, Learning Rate: {lr}')
-        running(n_qudits, beta, epochs, lr)
+for r in range(3):
+    for lr in [5e-3, 1e-3, 5e-4, 1e-4]:
+        running(n_layers, n_qudits, beta, epochs, lr)

@@ -129,7 +129,7 @@ def single_qutrit_unitary_synthesis(pr: torch.Tensor | np.ndarray, obj: List[int
     if len(obj) != 2:
         raise ValueError(f'The number of object qubits {len(obj)} should be 2')
     index = [[0, 1], [0, 2], [1, 2]]
-    pr = pr.reshape(3, 3)
+    pr = pr.reshape(3, 3, -1)
     for i, ind in enumerate(index):
         two_level_unitary_synthesis(pr[i], ind, obj)
 
@@ -193,7 +193,7 @@ def two_qutrit_unitary_synthesis(pr: torch.Tensor | np.ndarray, obj: List[int]):
         obj (List[int]): object qubits of the circuit.
     '''
     if len(pr) != NUM_PR:
-        raise ValueError(f'The number of params {len(pr)} should be {NUM_PR}')
+        raise ValueError(f'The number of params {len(pr),pr.shape} should be {NUM_PR}')
     if len(obj) != 4:
         raise ValueError(f'The number of object qubits {len(obj)} should be 4')
     single_qutrit_unitary_synthesis(pr[0:9], obj[2:])  # U1 pr:9

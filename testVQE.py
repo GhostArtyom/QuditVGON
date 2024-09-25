@@ -77,8 +77,8 @@ def circuit_expval(n_layers: int, n_qudits: int, params: torch.Tensor, Ham):
 
 
 def running(n_layers: int, n_qudits: int, beta: float, epochs: int, lr: float):
-    filename = f'./logs/testVQE_nqd{n_qudits}_beta{beta:.4f}_lr{lr}.log'
-    file_handler = logging.FileHandler(filename)
+    log = f'./logs/testVQE_nqd{n_qudits}_beta{beta:.4f}_lr{lr}.log'
+    file_handler = logging.FileHandler(log)
     file_handler.setLevel(logging.INFO)
     stream_handler = logging.StreamHandler(sys.stdout)
     stream_handler.setLevel(logging.INFO)

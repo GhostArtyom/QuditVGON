@@ -49,11 +49,12 @@ def Hamiltonian(n_qudits: int, beta: float):
     for i in range(n_qudits - 1):
         obj1 = [2 * i, 2 * i + 1]
         obj2 = [2 * i + 2, 2 * i + 3]
-        for j in range(3):
-            ham1 += spin_operator(obj1)[j] @ spin_operator(obj2)[j]
-        for k in range(9):
-            ham2 += spin_operator2(obj1)[k] @ spin_operator2(obj2)[k]
+        ham1 += qml.sum(*[spin_operator(obj1)[i] @ spin_operator(obj2)[i] for i in range(3)])
+        ham2 += qml.sum(*[spin_operator2(obj1)[i] @ spin_operator2(obj2)[i] for i in range(9)])
     Ham = ham1 / 4 - beta * ham2 / 16
+    coeffs, obs = qml.simplify(Ham).terms()
+    coeffs = torch.tensor(coeffs).real
+    Ham = qml.Hamiltonian(coeffs, obs)
     return Ham
 
 

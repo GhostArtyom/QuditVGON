@@ -1,5 +1,4 @@
-# 1. Simplified Hamiltonian, can't get circuit_expval when n_qudit >= 6
-# 2. Encoded Hamiltonian, are eigvals of origin Ham same as encoded Ham?
+# Are eigvals of origin Hamiltonian same as encoded Hamiltonian?
 
 import sys
 import time
@@ -10,6 +9,7 @@ import torch.nn as nn
 import pennylane as qml
 from typing import List
 from logging import info
+from utils import updatemat
 import torch.nn.functional as F
 from itertools import combinations
 import torch.distributions as dists
@@ -20,14 +20,19 @@ np.set_printoptions(precision=8, linewidth=200)
 torch.set_printoptions(precision=8, linewidth=200)
 
 n_layers = 2
-n_qudits = 5
+n_qudits = 4
 beta = -1 / 3
+n_iter = 5000
 batch_size = 4
-n_samples = 1600
 learning_rate = 1e-3
 n_qubits = 2 * n_qudits
-z_dim, h_dim = 50, [512, 256, 128, 64]
+n_samples = batch_size * n_iter
 n_params = n_layers * (n_qudits - 1) * NUM_PR
+ground_state_energy = -2 / 3 * (n_qudits - 1)
+
+z_dim = 50
+list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
+h_dim = np.power(2, list_z).astype(int)
 
 dev = qml.device('default.qubit', n_qubits)
 if torch.cuda.is_available() and n_qubits >= 14:
@@ -47,10 +52,11 @@ file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 logger.addHandler(stream_handler)
 
-info(f'Coefficient beta: {beta:.4f}')
+info(f'PyTorch Device: {device}')
 info(f'Number of qudits: {n_qudits}')
 info(f'Number of qubits: {n_qubits}')
-info(f'PyTorch Device: {device}')
+info(f'Learning Rate: {learning_rate:.0e}')
+info(f'Ground state energy: {ground_state_energy:.4f}')
 
 
 def spin_operator(obj: List[int]):
@@ -77,11 +83,10 @@ def Hamiltonian(n_qudits: int, beta: float):
         obj2 = [2 * i + 2, 2 * i + 3]
         ham1 += qml.sum(*[spin_operator(obj1)[i] @ spin_operator(obj2)[i] for i in range(3)])
         ham2 += qml.sum(*[spin_operator2(obj1)[i] @ spin_operator2(obj2)[i] for i in range(9)])
-    Ham = ham1 / 4 - beta * ham2 / 16
-    coeffs, obs = qml.simplify(Ham).terms()
+    ham = ham1 / 4 - beta * ham2 / 16
+    coeffs, obs = qml.simplify(ham).terms()
     coeffs = torch.tensor(coeffs).real
-    Ham = qml.Hamiltonian(coeffs, obs)
-    return Ham
+    return qml.Hamiltonian(coeffs, obs)
 
 
 def qutrit_symmetric_ansatz(params: torch.Tensor):
@@ -153,13 +158,14 @@ class VAE_Model(nn.Module):
         return params, mean, log_var
 
 
-data_dist = dists.Uniform(0, 1).sample([n_samples, n_params])
+data_dist = dists.Uniform(-np.pi, np.pi).sample([n_samples, n_params])
 train_db = DataLoader(data_dist, batch_size=batch_size, shuffle=True, drop_last=True)
 
 model = VAE_Model(n_params, z_dim, h_dim).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 start = time.perf_counter()
+energy_coeff, kl_coeff, fidelity_coeff = 1, 1, 1
 for i, batch in enumerate(train_db):
     model.train()
     optimizer.zero_grad(set_to_none=True)
@@ -179,12 +185,30 @@ for i, batch in enumerate(train_db):
         fidelities = torch.cat((fidelities, fidelity_state.unsqueeze(0)), dim=0)
     fidelity = fidelities.mean()
 
-    energy_coeff, kl_coeff, fidelity_coeff = 1, 1, 1
     loss = energy_coeff * energy + kl_coeff * kl_div + fidelity_coeff * fidelity
     loss.backward()
     optimizer.step()
 
     t = time.perf_counter() - start
-    info(f'Loss: {loss.item():.8f}, Energy: {energy.item():.8f}, KL: {kl_div.item():.8f}, Fidelity: {fidelity.item():.8f}, {i}, {t:.2f}')
-    if i >= 10:
-        break
+    info(f'Loss: {loss.item():.8f}, Energy: {energy.item():.8f}, KL: {kl_div.item():.8f}, Fidelity: {fidelity.item():.8f}, {i+1}/{n_iter}, {t:.2f}')
+
+params_res = params.detach().cpu()
+state_res = circuit_state(n_layers, params_res)
+time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
+mat_dict = {
+    f'T{time_str}': {
+        'beta': beta,
+        'n_qudits': n_qudits,
+        'n_qubits': n_qubits,
+        'params': params_res,
+        'state': state_res,
+        'loss': loss.item(),
+        'energy': energy.item(),
+        'kl_div': kl_div.item(),
+        'fidelity': fidelity.item(),
+        'learning_rate': learning_rate
+    }
+}
+mat_path = f'./mats/VGON_degeneracy.mat'
+updatemat(mat_path, mat_dict)
+info(f'Save: {mat_path} T{time_str}')

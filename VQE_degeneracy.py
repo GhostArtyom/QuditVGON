@@ -51,11 +51,10 @@ def Hamiltonian(n_qudits: int, beta: float):
         obj2 = [2 * i + 2, 2 * i + 3]
         ham1 += qml.sum(*[spin_operator(obj1)[i] @ spin_operator(obj2)[i] for i in range(3)])
         ham2 += qml.sum(*[spin_operator2(obj1)[i] @ spin_operator2(obj2)[i] for i in range(9)])
-    Ham = ham1 / 4 - beta * ham2 / 16
-    coeffs, obs = qml.simplify(Ham).terms()
+    ham = ham1 / 4 - beta * ham2 / 16
+    coeffs, obs = qml.simplify(ham).terms()
     coeffs = torch.tensor(coeffs).real
-    Ham = qml.Hamiltonian(coeffs, obs)
-    return Ham
+    return qml.Hamiltonian(coeffs, obs)
 
 
 def qutrit_symmetric_ansatz(params: torch.Tensor):
@@ -128,7 +127,7 @@ def running(n_layers: int, n_qudits: int, beta: float, epochs: int, learning_rat
             'loss_res': loss.item()
         }
     }
-    mat_path = f'./mats/testVQE.mat'
+    mat_path = f'./mats/VQE_degeneracy.mat'
     updatemat(mat_path, mat_dict)
     info(f'Save: {mat_path} T{time_str}')
     logger.removeHandler(file_handler)

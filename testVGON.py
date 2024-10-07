@@ -1,40 +1,28 @@
-# reduce the fidelity of states in the same batch
-# can not work... energy and fidelity can not descent even for batch size is 2
-
-import os
-import gc
-import sys
-import math
+import time
 import torch
-import logging
 import numpy as np
 import torch.nn as nn
 import pennylane as qml
-from datetime import datetime
 import torch.nn.functional as F
 from itertools import combinations
 import torch.distributions as dists
-from scipy.io import loadmat, savemat
 
 # setting/paras
 nq = 7  # energy = -15
+n_layers = 5
 lim = -(nq - 2) * 3 + 0.1
-batch_size = 6
-z_dim = 50
+batch_size = 4
+n_samples = batch_size * 500
 kl_coeff = 1
-fid_coeff = 20
-e_coeff = 1
-nlayer = 5
-num_iter = 150
+energy_coeff = 1
+fidelity_coeff = 20
 learning_rate = 0.001
-shapes = [(nlayer, 2 * nq)]
-energy_index = 'mean'
-cutoff_index = 'mean'
-training_sample_size = 1600
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-n_param = sum([np.prod(shape) for shape in shapes])
-list_z = np.arange(math.floor(math.log2(n_param)), math.ceil(math.log2(z_dim)) - 1, -1, dtype=int)
+z_dim = 50
+shapes = [(n_layers, 2 * nq)]
+n_params = sum([np.prod(shape) for shape in shapes])
+list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1, dtype=int)
 vec_exp = np.vectorize(lambda x: 2**x)
 h_dim = vec_exp(list_z)
 
@@ -67,13 +55,13 @@ dev = qml.device('default.qubit', wires=nq, shots=None)
 
 @qml.qnode(dev, interface='torch', diff_method='best')
 def circuit(inputs):
-    qml.layer(layer_hardware, nlayer, inputs)
+    qml.layer(layer_hardware, n_layers, inputs)
     return qml.expval(Hamiltonian(nq))  # False → PBC, True → OBC
 
 
 @qml.qnode(dev, interface='torch', diff_method='best')
 def circuit_vec(inputs):
-    qml.layer(layer_hardware, nlayer, inputs)
+    qml.layer(layer_hardware, n_layers, inputs)
     return qml.state()
 
 
@@ -131,14 +119,15 @@ class Model(nn.Module):
 
 
 data_dist = dists.Uniform(0, 1)
-x = data_dist.sample([training_sample_size, n_param])
+x = data_dist.sample([n_samples, n_params])
 train_db = torch.utils.data.DataLoader(list(x), shuffle=True, batch_size=batch_size, drop_last=True)
 
 # model
-model = Model(n_param, z_dim, h_dim)
+model = Model(n_params, z_dim, h_dim)
 model.to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
+start = time.perf_counter()
 for i, batch_x in enumerate(train_db):
     # training phase
     model.train()
@@ -161,17 +150,16 @@ for i, batch_x in enumerate(train_db):
     for state_index in combinations(range(np.shape(state)[0]), 2):
         fidelity = qml.math.fidelity_statevector(state[state_index[0]], state[state_index[1]], check_state=False)
         fidelities = torch.cat((fidelities, fidelity.unsqueeze(0)), dim=0)
-    fid_average = fidelities.mean()
+    fidelity_average = fidelities.mean()
 
     energy = torch.mean(out_energy)
 
     coeffs_list = [20, 20, 10, 5, 5, 2, 2, 2] + [1] * 20
-    fid_coeff = coeffs_list[int(i // 100)]
+    fidelity_coeff = coeffs_list[int(i // 100)]
 
-    loss = e_coeff * energy + kl_coeff * kl_div + fid_coeff * fid_average
+    loss = energy_coeff * energy + kl_coeff * kl_div + fidelity_coeff * fidelity_average
     loss.backward()
     optimizer.step()
-    print(i, loss)
 
-loss_res = loss.detach().cpu()
-print(loss_res)
+    t = time.perf_counter() - start
+    print(f'Loss: {loss.item():.8f}, Energy: {energy.item():.8f}, KL: {kl_div.item():.8f}, Fidelity: {fidelity.item():.8f}, {fidelity_coeff}, {i+1}, {t:.2f}')

@@ -111,7 +111,7 @@ def running(n_layers: int, n_qudits: int, beta: float, epochs: int, learning_rat
             t = time.perf_counter() - start
             info(f'Loss: {loss.item():.20f}, {count}/{epochs}, {t:.2f}')
 
-    params_res = optimizer.param_groups[0]['params'][0].detach().cpu()
+    params_res = params.detach().cpu().numpy()
     state_res = circuit_state(n_layers, params_res)
     time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
     mat_dict = {

@@ -9,7 +9,7 @@ import torch.nn as nn
 import pennylane as qml
 from typing import List
 from logging import info
-from utils import updatemat
+from scipy.io import savemat
 import torch.nn.functional as F
 from itertools import combinations
 import torch.distributions as dists
@@ -20,11 +20,10 @@ np.set_printoptions(precision=8, linewidth=200)
 torch.set_printoptions(precision=8, linewidth=200)
 
 n_layers = 2
-n_qudits = 4
+n_qudits = 7
 beta = -1 / 3
-n_iter = 2000
-batch_size = 8
-energy_tol = 1e-2
+n_iter = 5000
+batch_size = 10
 learning_rate = 1e-3
 n_qubits = 2 * n_qudits
 n_samples = batch_size * n_iter
@@ -162,7 +161,7 @@ class VAE_Model(nn.Module):
 model = VAE_Model(n_params, z_dim, h_dim).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-data_dist = dists.Uniform(-np.pi, np.pi).sample([n_samples, n_params])
+data_dist = dists.Uniform(0, 1).sample([n_samples, n_params])
 train_data = DataLoader(data_dist, batch_size=batch_size, shuffle=True, drop_last=True)
 
 start = time.perf_counter()
@@ -193,27 +192,27 @@ for i, batch in enumerate(train_data):
     t = time.perf_counter() - start
     info(f'Loss: {loss.item():.8f}, Energy: {energy.item():.8f}, KL: {kl_div.item():.8f}, Fidelity: {fidelity.item():.8f}, {i+1}/{n_iter}, {t:.2f}')
 
-    if energy - ground_state_energy < energy_tol:
-        break
-
-params_res = params.detach().cpu()
-state_res = circuit_state(n_layers, params_res)
-time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
-path = f'./mats/VGON_nqd{n_qudits}_{time_str}'
-torch.save(model.state_dict(), f'{path}.pt')
-mat_dict = {
-    'beta': beta,
-    'n_qudits': n_qudits,
-    'n_qubits': n_qubits,
-    'state': state_res,
-    'loss': loss.item(),
-    'params': params_res,
-    'energy': energy.item(),
-    'kl_div': kl_div.item(),
-    'fidelity': fidelity.item(),
-    'learning_rate': learning_rate,
-    'batch_size': batch_size,
-    'energy_tol': energy_tol
-}
-updatemat(f'{path}.mat', mat_dict)
-info(f'Save: {path}.pt&mat')
+    energy_tol, kl_tol = 1e-2, 1e-5
+    energy_gap = energy.item() - ground_state_energy
+    if energy_gap < energy_tol and kl_div.item() < kl_tol or i >= n_iter - 5:
+        params_res = params.detach().cpu().numpy()
+        state_res = circuit_state(n_layers, params_res)
+        time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
+        path = f'./mats/VGON_nqd{n_qudits}_{time_str}'
+        mat_dict = {
+            'beta': beta,
+            'n_qudits': n_qudits,
+            'n_qubits': n_qubits,
+            'params': params_res,
+            'state': state_res,
+            'loss': loss.item(),
+            'energy': energy.item(),
+            'kl_div': kl_div.item(),
+            'fidelity': fidelity.item(),
+            'learning_rate': learning_rate,
+            'batch_size': batch_size,
+            'energy_tol': energy_tol
+        }
+        savemat(f'{path}.mat', mat_dict)
+        torch.save(model.state_dict(), f'{path}.pt')
+        info(f'Energy Gap: {energy_gap:.4e}, KL: {kl_div.item():.4e}, Save: {path}.mat&pt')

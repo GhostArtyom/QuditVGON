@@ -193,7 +193,7 @@ for i, batch in enumerate(train_data):
     t = time.perf_counter() - start
     info(f'Loss: {loss.item():.8f}, Energy: {energy.item():.8f}, KL: {kl_div.item():.8f}, Fidelity: {fidelity.item():.8f}, {i+1}/{n_iter}, {t:.2f}')
 
-    if energy - ground_state_energy > energy_tol:
+    if energy - ground_state_energy < energy_tol:
         break
 
 params_res = params.detach().cpu()
@@ -212,6 +212,7 @@ mat_dict = {
     'kl_div': kl_div.item(),
     'fidelity': fidelity.item(),
     'learning_rate': learning_rate,
+    'batch_size': batch_size,
     'energy_tol': energy_tol
 }
 updatemat(f'{path}.mat', mat_dict)

@@ -22,8 +22,9 @@ torch.set_printoptions(precision=8, linewidth=200)
 n_layers = 2
 n_qudits = 4
 beta = -1 / 3
-n_iter = 5000
-batch_size = 4
+n_iter = 2000
+batch_size = 8
+energy_tol = 1e-2
 learning_rate = 1e-3
 n_qubits = 2 * n_qudits
 n_samples = batch_size * n_iter
@@ -158,20 +159,20 @@ class VAE_Model(nn.Module):
         return params, mean, log_var
 
 
-data_dist = dists.Uniform(-np.pi, np.pi).sample([n_samples, n_params])
-train_db = DataLoader(data_dist, batch_size=batch_size, shuffle=True, drop_last=True)
-
 model = VAE_Model(n_params, z_dim, h_dim).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
+data_dist = dists.Uniform(-np.pi, np.pi).sample([n_samples, n_params])
+train_data = DataLoader(data_dist, batch_size=batch_size, shuffle=True, drop_last=True)
+
 start = time.perf_counter()
+Ham = Hamiltonian(n_qudits, beta)
 energy_coeff, kl_coeff, fidelity_coeff = 1, 1, 1
-for i, batch in enumerate(train_db):
+for i, batch in enumerate(train_data):
     model.train()
     optimizer.zero_grad(set_to_none=True)
     params, mean, log_var = model(batch.to(device))
 
-    Ham = Hamiltonian(n_qudits, beta)
     energy = circuit_expval(n_layers, params, Ham)
     energy = energy.mean()
 
@@ -192,23 +193,26 @@ for i, batch in enumerate(train_db):
     t = time.perf_counter() - start
     info(f'Loss: {loss.item():.8f}, Energy: {energy.item():.8f}, KL: {kl_div.item():.8f}, Fidelity: {fidelity.item():.8f}, {i+1}/{n_iter}, {t:.2f}')
 
+    if energy - ground_state_energy > energy_tol:
+        break
+
 params_res = params.detach().cpu()
 state_res = circuit_state(n_layers, params_res)
 time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
+path = f'./mats/VGON_nqd{n_qudits}_{time_str}'
+torch.save(model.state_dict(), f'{path}.pt')
 mat_dict = {
-    f'T{time_str}': {
-        'beta': beta,
-        'n_qudits': n_qudits,
-        'n_qubits': n_qubits,
-        'params': params_res,
-        'state': state_res,
-        'loss': loss.item(),
-        'energy': energy.item(),
-        'kl_div': kl_div.item(),
-        'fidelity': fidelity.item(),
-        'learning_rate': learning_rate
-    }
+    'beta': beta,
+    'n_qudits': n_qudits,
+    'n_qubits': n_qubits,
+    'state': state_res,
+    'loss': loss.item(),
+    'params': params_res,
+    'energy': energy.item(),
+    'kl_div': kl_div.item(),
+    'fidelity': fidelity.item(),
+    'learning_rate': learning_rate,
+    'energy_tol': energy_tol
 }
-mat_path = f'./mats/VGON_degeneracy.mat'
-updatemat(mat_path, mat_dict)
-info(f'Save: {mat_path} T{time_str}')
+updatemat(f'{path}.mat', mat_dict)
+info(f'Save: {path}.pt&mat')

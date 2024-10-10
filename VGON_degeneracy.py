@@ -22,9 +22,11 @@ torch.set_printoptions(precision=8, linewidth=200)
 n_layers = 2
 n_qudits = 7
 beta = -1 / 3
-n_iter = 5000
+n_iter = 1000
 batch_size = 10
 learning_rate = 1e-3
+energy_coeff, kl_coeff = 1, 1
+
 n_qubits = 2 * n_qudits
 n_samples = batch_size * n_iter
 n_params = n_layers * (n_qudits - 1) * NUM_PR
@@ -158,6 +160,8 @@ class VAE_Model(nn.Module):
         return params, mean, log_var
 
 
+Ham = Hamiltonian(n_qudits, beta)
+
 model = VAE_Model(n_params, z_dim, h_dim).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -165,8 +169,6 @@ data_dist = dists.Uniform(0, 1).sample([n_samples, n_params])
 train_data = DataLoader(data_dist, batch_size=batch_size, shuffle=True, drop_last=True)
 
 start = time.perf_counter()
-Ham = Hamiltonian(n_qudits, beta)
-energy_coeff, kl_coeff, fidelity_coeff = 1, 1, 1
 for i, batch in enumerate(train_data):
     model.train()
     optimizer.zero_grad(set_to_none=True)
@@ -178,41 +180,42 @@ for i, batch in enumerate(train_data):
     kl_div = -0.5 * (1 + log_var - mean.pow(2) - log_var.exp())
     kl_div = kl_div.mean()
 
-    state = circuit_state(n_layers, params)
-    fidelities = torch.empty((0), device=device)
-    for ind in combinations(range(np.shape(state)[0]), 2):
-        fidelity_state = qml.math.fidelity_statevector(state[ind[0]], state[ind[1]], check_state=False)
-        fidelities = torch.cat((fidelities, fidelity_state.unsqueeze(0)), dim=0)
-    fidelity = fidelities.mean()
+    cos_sims = torch.empty((0), device=device)
+    for ind in combinations(range(batch_size), 2):
+        sim = torch.cosine_similarity(params[ind[0], :], params[ind[1], :], dim=0)
+        cos_sims = torch.cat((cos_sims, sim.unsqueeze(0)), dim=0)
+    cos_sim = cos_sims.mean()
+    cos_sim_coeff = int((8 * cos_sim).ceil().item())
 
-    loss = energy_coeff * energy + kl_coeff * kl_div + fidelity_coeff * fidelity
+    loss = energy_coeff * energy + kl_coeff * kl_div + cos_sim_coeff * cos_sim
     loss.backward()
     optimizer.step()
 
     t = time.perf_counter() - start
-    info(f'Loss: {loss.item():.8f}, Energy: {energy.item():.8f}, KL: {kl_div.item():.8f}, Fidelity: {fidelity.item():.8f}, {i+1}/{n_iter}, {t:.2f}')
+    loss, energy, kl_div, cos_sim = loss.item(), energy.item(), kl_div.item(), cos_sim.item()
+    info(f'Loss: {loss:.8f}, Energy: {energy:.8f}, KL: {kl_div:.8f}, Cos_Sim: {cos_sim:.8f} * {cos_sim_coeff}, {i+1}/{n_iter}, {t:.2f}')
 
     energy_tol, kl_tol = 1e-2, 1e-5
-    energy_gap = energy.item() - ground_state_energy
-    if energy_gap < energy_tol and kl_div.item() < kl_tol or i >= n_iter - 5:
+    energy_gap = energy - ground_state_energy
+    if energy_gap < energy_tol and kl_div < kl_tol or i >= n_iter - 5:
         params_res = params.detach().cpu().numpy()
         state_res = circuit_state(n_layers, params_res)
         time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
         path = f'./mats/VGON_nqd{n_qudits}_{time_str}'
         mat_dict = {
             'beta': beta,
+            'loss': loss,
+            'energy': energy,
+            'kl_div': kl_div,
+            'cos_sim': cos_sim,
+            'state': state_res,
+            'params': params_res,
             'n_qudits': n_qudits,
             'n_qubits': n_qubits,
-            'params': params_res,
-            'state': state_res,
-            'loss': loss.item(),
-            'energy': energy.item(),
-            'kl_div': kl_div.item(),
-            'fidelity': fidelity.item(),
-            'learning_rate': learning_rate,
             'batch_size': batch_size,
-            'energy_tol': energy_tol
+            'energy_tol': energy_tol,
+            'learning_rate': learning_rate,
         }
         savemat(f'{path}.mat', mat_dict)
         torch.save(model.state_dict(), f'{path}.pt')
-        info(f'Energy Gap: {energy_gap:.4e}, KL: {kl_div.item():.4e}, Save: {path}.mat&pt')
+        info(f'Energy Gap: {energy_gap:.4e}, KL: {kl_div:.4e}, Save: {path}.mat&pt')

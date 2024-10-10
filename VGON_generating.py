@@ -133,14 +133,14 @@ def testing(n_qudits: int, batch_size: int, n_test: int):
     decoded_states = np.empty([0, 3**n_qudits])
     for i, batch in enumerate(test_data):
         params, _, _ = model(batch.to(device))
-        energy = circuit_expval(n_layers, params, Ham).detach().numpy()
-        states = circuit_state(n_layers, params).detach().numpy()
+        energy = circuit_expval(n_layers, params, Ham).detach().cpu().numpy()
+        states = circuit_state(n_layers, params).detach().cpu().numpy()
         for state in states:
             decoded_state = symmetric_decoding(state, n_qudits)
             decoded_states = np.vstack((decoded_states, decoded_state))
             overlap = [fidelity(decoded_state, ED_state) for ED_state in ED_states]
             overlaps = np.vstack((overlaps, overlap))
-        print(i + 1, f'{energy.mean().item():.8f}', energy)
+        print(i + 1, f'{energy.mean():.8f}', energy)
     updatemat(f'{path}.mat', {'overlaps': overlaps})
 
 

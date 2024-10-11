@@ -94,17 +94,14 @@ def testing(n_qudits: int, batch_size: int, n_test: int):
 
     data_dist = dists.Uniform(0, 1).sample([n_samples, n_params])
     test_data = DataLoader(data_dist, batch_size=batch_size, shuffle=True, drop_last=True)
-    ED_states = loadmat('./mats/ED_degeneracy.mat')[f'nqd{n_qudits}'][0, 1].T
 
+    ED_states = loadmat('./mats/ED_degeneracy.mat')[f'nqd{n_qudits}'][0, 1].T
     overlaps = np.empty([0, ED_states.shape[0]])
     decoded_states = np.empty([0, 3**n_qudits])
 
     start = time.perf_counter()
     for i, batch in enumerate(test_data):
-        params, mean, log_var = model(batch.to(device))
-
-        kl_div = -0.5 * (1 + log_var - mean.pow(2) - log_var.exp())
-        kl_div = kl_div.mean().item()
+        params, _, _ = model(batch.to(device))
 
         cos_sims = torch.empty((0), device=device)
         for ind in combinations(range(batch_size), 2):
@@ -120,7 +117,9 @@ def testing(n_qudits: int, batch_size: int, n_test: int):
             overlaps = np.vstack((overlaps, overlap))
 
         t = time.perf_counter() - start
-        print(f'Cos_Sim: {cos_sim:.8f}, KL: {kl_div:.4e}, {i+1}/{n_test}, {t:.2f}')
+        print(f'Cos_Sim: {cos_sim:.8f}, {i+1}/{n_test}, {t:.2f}')
+        print(overlaps[batch_size * i:batch_size * (i + 1), :])
+
     updatemat(f'{path}.mat', {'overlaps': overlaps})
     print(f'Save {path}.mat with overlaps')
 
@@ -132,7 +131,11 @@ for name in sorted(os.listdir('./mats')):
     if match:
         path = f'./mats/{match.group(1)}'
         load = loadmat(f'{path}.mat')
-        n_qudits = int(re.search(r'nqd(\d+)', path).group(1))
         if 'overlaps' not in load:
+            energy = load['energy'][0, 0]
+            kl_div = load['kl_div'][0, 0]
+            cos_sim = load['cos_sim'][0, 0]
             print(f'Load {path}.mat without overlaps')
+            print(f'Cos_Sim: {cos_sim:.8f}, Energy: {energy:.8f}, KL: {kl_div:.4e}')
+            n_qudits = int(re.search(r'nqd(\d+)', path).group(1))
             testing(n_qudits, batch_size, n_test)

@@ -185,7 +185,7 @@ for i, batch in enumerate(train_data):
         sim = torch.cosine_similarity(params[ind[0], :], params[ind[1], :], dim=0)
         cos_sims = torch.cat((cos_sims, sim.unsqueeze(0)), dim=0)
     cos_sim = cos_sims.mean()
-    cos_sim_coeff = int((8 * cos_sim).ceil().item())
+    cos_sim_coeff = 5 * cos_sim
 
     loss = energy_coeff * energy + kl_coeff * kl_div + cos_sim_coeff * cos_sim
     loss.backward()
@@ -193,11 +193,11 @@ for i, batch in enumerate(train_data):
 
     t = time.perf_counter() - start
     loss, energy, kl_div, cos_sim = loss.item(), energy.item(), kl_div.item(), cos_sim.item()
-    info(f'Loss: {loss:.8f}, Energy: {energy:.8f}, KL: {kl_div:.4e}, Cos_Sim: {cos_sim:.8f} * {cos_sim_coeff}, {i+1}/{n_iter}, {t:.2f}')
+    info(f'Loss: {loss:.8f}, Energy: {energy:.8f}, KL: {kl_div:.4e}, Cos_Sim: {cos_sim:.8f} * {cos_sim_coeff:.2f}, {i+1}/{n_iter}, {t:.2f}')
 
     energy_tol, kl_tol = 1e-2, 1e-5
     energy_gap = energy - ground_state_energy
-    if energy_gap < energy_tol and kl_div < kl_tol or i >= n_iter - 5:
+    if energy_gap < energy_tol and kl_div < kl_tol or i >= n_iter - 1:
         params_res = params.detach().cpu().numpy()
         state_res = circuit_state(n_layers, params_res)
         time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
@@ -205,6 +205,7 @@ for i, batch in enumerate(train_data):
         mat_dict = {
             'beta': beta,
             'loss': loss,
+            'n_iter': n_iter,
             'energy': energy,
             'kl_div': kl_div,
             'cos_sim': cos_sim,

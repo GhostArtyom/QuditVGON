@@ -193,7 +193,7 @@ for i, batch in enumerate(train_data):
 
     t = time.perf_counter() - start
     loss, energy, kl_div, cos_sim = loss.item(), energy.item(), kl_div.item(), cos_sim.item()
-    info(f'Loss: {loss:.8f}, Energy: {energy:.8f}, KL: {kl_div:.8f}, Cos_Sim: {cos_sim:.8f} * {cos_sim_coeff}, {i+1}/{n_iter}, {t:.2f}')
+    info(f'Loss: {loss:.8f}, Energy: {energy:.8f}, KL: {kl_div:.4e}, Cos_Sim: {cos_sim:.8f} * {cos_sim_coeff}, {i+1}/{n_iter}, {t:.2f}')
 
     energy_tol, kl_tol = 1e-2, 1e-5
     energy_gap = energy - ground_state_energy
@@ -214,7 +214,7 @@ for i, batch in enumerate(train_data):
             'n_qubits': n_qubits,
             'batch_size': batch_size,
             'energy_tol': energy_tol,
-            'learning_rate': learning_rate,
+            'learning_rate': learning_rate
         }
         savemat(f'{path}.mat', mat_dict)
         torch.save(model.state_dict(), f'{path}.pt')

@@ -22,7 +22,7 @@ torch.set_printoptions(precision=8, linewidth=200)
 n_layers = 2
 n_qudits = 7
 beta = -1 / 3
-n_iter = 1000
+n_iter = 5000
 batch_size = 10
 learning_rate = 1e-3
 energy_coeff, kl_coeff = 1, 1
@@ -185,8 +185,8 @@ for i, batch in enumerate(train_data):
         sim = torch.cosine_similarity(params[ind[0], :], params[ind[1], :], dim=0)
         cos_sims = torch.cat((cos_sims, sim.unsqueeze(0)), dim=0)
     cos_sim = cos_sims.mean()
-    cos_sim_coeff = 5 * cos_sim
 
+    cos_sim_coeff = 9 * (2 * cos_sim - cos_sim.pow(2)) + 1
     loss = energy_coeff * energy + kl_coeff * kl_div + cos_sim_coeff * cos_sim
     loss.backward()
     optimizer.step()

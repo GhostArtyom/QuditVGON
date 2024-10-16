@@ -6,10 +6,13 @@ import numpy as np
 import torch.nn as nn
 import pennylane as qml
 from typing import List
+from logging import info
+from logger import Logger
 from scipy.io import loadmat
 import torch.nn.functional as F
 from itertools import combinations
 import torch.distributions as dists
+from numpy.linalg import matrix_rank
 from utils import fidelity, updatemat
 from torch.utils.data import DataLoader
 from qudit_mapping import symmetric_decoding
@@ -20,20 +23,6 @@ torch.set_printoptions(precision=8, linewidth=200)
 
 
 def testing(n_qudits: int, batch_size: int, n_test: int):
-    n_layers = 2
-    n_qubits = 2 * n_qudits
-    n_samples = batch_size * n_test
-    n_params = n_layers * (n_qudits - 1) * NUM_PR
-
-    z_dim = 50
-    list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
-    h_dim = np.power(2, list_z).astype(int)
-
-    dev = qml.device('default.qubit', n_qubits)
-    if torch.cuda.is_available() and n_qubits >= 14:
-        device = torch.device('cuda')
-    else:
-        device = torch.device('cpu')
 
     def qutrit_symmetric_ansatz(params: torch.Tensor):
         for i in range(n_qudits - 1):
@@ -102,14 +91,22 @@ def testing(n_qudits: int, batch_size: int, n_test: int):
     start = time.perf_counter()
     for i, batch in enumerate(test_data):
         params, _, _ = model(batch.to(device))
+        states = circuit_state(n_layers, params)
 
         cos_sims = torch.empty((0), device=device)
+        fidelities = torch.empty((0), device=device)
         for ind in combinations(range(batch_size), 2):
             sim = torch.cosine_similarity(params[ind[0], :], params[ind[1], :], dim=0)
             cos_sims = torch.cat((cos_sims, sim.unsqueeze(0)), dim=0)
+            fid = qml.math.fidelity_statevector(states[ind[0]], states[ind[1]])
+            fidelities = torch.cat((fidelities, fid.unsqueeze(0)), dim=0)
         cos_sim = cos_sims.mean().item()
 
-        states = circuit_state(n_layers, params).detach().cpu().numpy()
+        states = states.detach().cpu().numpy()
+        rank = matrix_rank(states)
+        if rank < batch_size:
+            info(f'Rank = {rank} < BatchSize = {batch_size}')
+
         for state in states:
             decoded_state = symmetric_decoding(state, n_qudits)
             decoded_states = np.vstack((decoded_states, decoded_state))
@@ -117,15 +114,35 @@ def testing(n_qudits: int, batch_size: int, n_test: int):
             overlaps = np.vstack((overlaps, overlap))
 
         t = time.perf_counter() - start
-        print(f'Cos_Sim: {cos_sim:.8f}, {i+1}/{n_test}, {t:.2f}')
-        print(overlaps[batch_size * i:batch_size * (i + 1), :])
+        info(
+            f'Cos_Sim: {cos_sim:.8f}, Fidelity: {fidelities.max():.8f} {fidelities.mean():.8f} {fidelities.min():.8f}, Rank: {rank}, {i+1}/{n_test}, {t:.2f}'
+        )
 
     updatemat(f'{path}.mat', {'overlaps': overlaps})
-    print(f'Save {path}.mat with overlaps')
+    info(f'Save {path}.mat with overlaps')
 
 
-batch_size, n_test = 10, 100
-pattern = r'(VGON_nqd\d+_\d{8}_\d{6}).mat'
+n_layers = 2
+n_qudits = 7
+n_test = 100
+batch_size = 10
+n_qubits = 2 * n_qudits
+n_samples = batch_size * n_test
+n_params = n_layers * (n_qudits - 1) * NUM_PR
+ground_state_energy = -2 / 3 * (n_qudits - 1)
+
+z_dim = 50
+list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
+h_dim = np.power(2, list_z).astype(int)
+
+dev = qml.device('default.qubit', n_qubits)
+if torch.cuda.is_available() and n_qubits >= 14:
+    device = torch.device('cuda')
+else:
+    device = torch.device('cpu')
+
+Logger(f'./logs/VGON_nqd{n_qudits}_generating.log')
+pattern = f'(VGON_nqd{n_qudits}' + r'_\d{8}_\d{6}).mat'
 for name in sorted(os.listdir('./mats')):
     match = re.search(pattern, name)
     if match:
@@ -135,7 +152,6 @@ for name in sorted(os.listdir('./mats')):
             energy = load['energy'][0, 0]
             kl_div = load['kl_div'][0, 0]
             cos_sim = load['cos_sim'][0, 0]
-            print(f'Load {path}.mat without overlaps')
-            print(f'Cos_Sim: {cos_sim:.8f}, Energy: {energy:.8f}, KL: {kl_div:.4e}')
-            n_qudits = int(re.search(r'nqd(\d+)', path).group(1))
+            info(f'Load {path}.mat without overlaps')
+            info(f'Cos_Sim: {cos_sim:.8f}, Energy: {energy:.8f}, KL: {kl_div:.4e}')
             testing(n_qudits, batch_size, n_test)

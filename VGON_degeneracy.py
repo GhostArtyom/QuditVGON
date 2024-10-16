@@ -1,14 +1,12 @@
-# Are eigvals of origin Hamiltonian same as encoded Hamiltonian?
-
 import sys
 import time
 import torch
-import logging
 import numpy as np
 import torch.nn as nn
 import pennylane as qml
 from typing import List
 from logging import info
+from logger import Logger
 from scipy.io import savemat
 import torch.nn.functional as F
 from itertools import combinations
@@ -42,18 +40,7 @@ if torch.cuda.is_available() and n_qubits >= 14:
 else:
     device = torch.device('cpu')
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-log = f'./logs/VGON_nqd{n_qudits}.log'
-file_handler = logging.FileHandler(log)
-file_handler.setLevel(logging.INFO)
-stream_handler = logging.StreamHandler(sys.stdout)
-stream_handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s %(message)s')
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
-logger.addHandler(stream_handler)
-
+Logger(f'./logs/VGON_nqd{n_qudits}_degeneracy.log')
 info(f'PyTorch Device: {device}')
 info(f'Number of qudits: {n_qudits}')
 info(f'Number of qubits: {n_qubits}')
@@ -186,14 +173,14 @@ for i, batch in enumerate(train_data):
         cos_sims = torch.cat((cos_sims, sim.unsqueeze(0)), dim=0)
     cos_sim = cos_sims.mean()
 
-    cos_sim_coeff = 9 * (2 * cos_sim - cos_sim.pow(2)) + 1
+    cos_sim_coeff = cos_sim.abs()
     loss = energy_coeff * energy + kl_coeff * kl_div + cos_sim_coeff * cos_sim
     loss.backward()
     optimizer.step()
 
     t = time.perf_counter() - start
     loss, energy, kl_div, cos_sim = loss.item(), energy.item(), kl_div.item(), cos_sim.item()
-    info(f'Loss: {loss:.8f}, Energy: {energy:.8f}, KL: {kl_div:.4e}, Cos_Sim: {cos_sim:.8f} * {cos_sim_coeff:.2f}, {i+1}/{n_iter}, {t:.2f}')
+    info(f'Loss: {loss:.8f}, Energy: {energy:.8f}, KL: {kl_div:.4e}, Cos_Sim: {cos_sim:.8f}, {i+1}/{n_iter}, {t:.2f}')
 
     energy_tol, kl_tol = 1e-2, 1e-5
     energy_gap = energy - ground_state_energy

@@ -23,6 +23,18 @@ torch.set_printoptions(precision=8, linewidth=200)
 
 
 def testing(n_qudits: int, batch_size: int, n_test: int):
+    n_layers = 2
+    beta = -1 / 3
+    energy_tol = 1e-1
+    n_qubits = 2 * n_qudits
+    n_samples = batch_size * n_test
+    n_params = n_layers * (n_qudits - 1) * NUM_PR
+    ground_state_energy = -2 / 3 * (n_qudits - 1)
+    energy_upper = ground_state_energy + energy_tol
+
+    z_dim = 50
+    list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
+    h_dim = np.power(2, list_z).astype(int)
 
     def spin_operator(obj: List[int]):
         if len(obj) != 2:
@@ -129,19 +141,13 @@ def testing(n_qudits: int, batch_size: int, n_test: int):
         energy = circuit_expval(n_layers, params, Ham)
 
         cos_sims = torch.empty((0), device=device)
-        fidelities = torch.empty((0), device=device)
         for ind in combinations(range(batch_size), 2):
             sim = torch.cosine_similarity(params[ind[0], :], params[ind[1], :], dim=0)
             cos_sims = torch.cat((cos_sims, sim.unsqueeze(0)), dim=0)
-            fid = qml.math.fidelity_statevector(states[ind[0]], states[ind[1]])
-            fidelities = torch.cat((fidelities, fid.unsqueeze(0)), dim=0)
         cos_sim = cos_sims.mean().item()
 
         states = states.detach().cpu().numpy()
         rank = matrix_rank(states)
-        if rank < batch_size:
-            info(f'Rank = {rank} < BatchSize = {batch_size}')
-
         for state in states:
             decoded_state = symmetric_decoding(state, n_qudits)
             decoded_states = np.vstack((decoded_states, decoded_state))
@@ -149,28 +155,19 @@ def testing(n_qudits: int, batch_size: int, n_test: int):
             overlaps = np.vstack((overlaps, overlap))
 
         t = time.perf_counter() - start
-        info(
-            f'Cos_Sim: {cos_sim:.8f}, Fidelity: {fidelities.max():.8f} {fidelities.mean():.8f} {fidelities.min():.8f}, Rank: {rank}, {i+1}/{n_test}, {t:.2f}'
-        )
-        info(f'Energy: {energy.detach().cpu().numpy()}')
+        info(f'Cos_Sim: {cos_sim:.8f}, Energy: {energy.mean():.8f}, {energy.max():.6f}, {energy.min():.6f}, Rank: {rank}, {i+1}/{n_test}, {t:.2f}')
+        if rank < batch_size:
+            info(f'Rank: {rank} < BatchSize: {batch_size}')
+        if energy.max() > energy_upper:
+            info(f'Energy Max: {energy.max():.8f} > Energy Upper: {energy_upper:.8f}')
 
     updatemat(f'{path}.mat', {'overlaps': overlaps})
     info(f'Save {path}.mat with overlaps')
 
 
-n_layers = 2
-n_qudits = 6
-n_test = 100
-beta = -1 / 3
-batch_size = 10
+n_test = 50
+n_qudits = 7
 n_qubits = 2 * n_qudits
-n_samples = batch_size * n_test
-n_params = n_layers * (n_qudits - 1) * NUM_PR
-ground_state_energy = -2 / 3 * (n_qudits - 1)
-
-z_dim = 50
-list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
-h_dim = np.power(2, list_z).astype(int)
 
 dev = qml.device('default.qubit', n_qubits)
 if torch.cuda.is_available() and n_qubits >= 14:
@@ -178,7 +175,9 @@ if torch.cuda.is_available() and n_qubits >= 14:
 else:
     device = torch.device('cpu')
 
-Logger(f'./logs/VGON_nqd{n_qudits}_generating.log')
+log = f'./logs/VGON_nqd{n_qudits}_generating.log'
+logger = Logger(log)
+
 pattern = f'(VGON_nqd{n_qudits}' + r'_\d{8}_\d{6}).mat'
 for name in sorted(os.listdir('./mats')):
     match = re.search(pattern, name)
@@ -186,9 +185,13 @@ for name in sorted(os.listdir('./mats')):
         path = f'./mats/{match.group(1)}'
         load = loadmat(f'{path}.mat')
         if 'overlaps' not in load:
-            energy = load['energy'][0, 0]
-            kl_div = load['kl_div'][0, 0]
-            cos_sim = load['cos_sim'][0, 0]
+            energy = load['energy'].item()
+            kl_div = load['kl_div'].item()
+            cos_sim = load['cos_sim'].item()
+            batch_size = load['batch_size'].item()
+
+            logger.add_handler()
             info(f'Load {path}.mat without overlaps')
-            info(f'Cos_Sim: {cos_sim:.8f}, Energy: {energy:.8f}, KL: {kl_div:.4e}')
+            info(f'Cos_Sim: {cos_sim:.8f}, Energy: {energy:.8f}, KL: {kl_div:.4e}, Batch Size: {batch_size}')
             testing(n_qudits, batch_size, n_test)
+            logger.remove_handler()

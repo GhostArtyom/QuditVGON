@@ -16,10 +16,12 @@ class Logger:
         stream_handler = logging.StreamHandler(sys.stdout)
         stream_handler.setLevel(level)
 
-        logger.addHandler(file_handler)
-        logger.addHandler(stream_handler)
-
         self.handler = (file_handler, stream_handler)
+
+    def add_handler(self):
+        for handler in self.handler:
+            logger = logging.getLogger()
+            logger.addHandler(handler)
 
     def remove_handler(self):
         for handler in self.handler:

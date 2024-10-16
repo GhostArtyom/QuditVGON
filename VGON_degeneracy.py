@@ -21,9 +21,10 @@ n_layers = 2
 n_qudits = 7
 beta = -1 / 3
 n_iter = 5000
-batch_size = 10
+batch_size = 26
 learning_rate = 1e-3
 energy_coeff, kl_coeff = 1, 1
+energy_tol, kl_tol = 1e-2, 1e-6
 
 n_qubits = 2 * n_qudits
 n_samples = batch_size * n_iter
@@ -40,12 +41,15 @@ if torch.cuda.is_available() and n_qubits >= 14:
 else:
     device = torch.device('cpu')
 
-Logger(f'./logs/VGON_nqd{n_qudits}_degeneracy.log')
+log = f'./logs/VGON_nqd{n_qudits}_degeneracy.log'
+logger = Logger(log)
+logger.add_handler()
+
 info(f'PyTorch Device: {device}')
 info(f'Number of qudits: {n_qudits}')
 info(f'Number of qubits: {n_qubits}')
 info(f'Learning Rate: {learning_rate:.0e}')
-info(f'Ground state energy: {ground_state_energy:.4f}')
+info(f'Ground State Energy: {ground_state_energy:.4f}')
 
 
 def spin_operator(obj: List[int]):
@@ -182,7 +186,6 @@ for i, batch in enumerate(train_data):
     loss, energy, kl_div, cos_sim = loss.item(), energy.item(), kl_div.item(), cos_sim.item()
     info(f'Loss: {loss:.8f}, Energy: {energy:.8f}, KL: {kl_div:.4e}, Cos_Sim: {cos_sim:.8f}, {i+1}/{n_iter}, {t:.2f}')
 
-    energy_tol, kl_tol = 1e-2, 1e-5
     energy_gap = energy - ground_state_energy
     if energy_gap < energy_tol and kl_div < kl_tol or i >= n_iter - 1:
         params_res = params.detach().cpu().numpy()

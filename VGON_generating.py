@@ -24,6 +24,33 @@ torch.set_printoptions(precision=8, linewidth=200)
 
 def testing(n_qudits: int, batch_size: int, n_test: int):
 
+    def spin_operator(obj: List[int]):
+        if len(obj) != 2:
+            raise ValueError(f'The number of object qubits {len(obj)} should be 2')
+        sx = qml.X(obj[0]) + qml.X(obj[1])
+        sy = qml.Y(obj[0]) + qml.Y(obj[1])
+        sz = qml.Z(obj[0]) + qml.Z(obj[1])
+        return sx, sy, sz
+
+    def spin_operator2(obj: List[int]):
+        if len(obj) != 2:
+            raise ValueError(f'The number of object qubits {len(obj)} should be 2')
+        s1 = spin_operator(obj)
+        s2 = [i @ j for i in s1 for j in s1]
+        return s2
+
+    def Hamiltonian(n_qudits: int, beta: float):
+        ham1, ham2 = 0, 0
+        for i in range(n_qudits - 1):
+            obj1 = [2 * i, 2 * i + 1]
+            obj2 = [2 * i + 2, 2 * i + 3]
+            ham1 += qml.sum(*[spin_operator(obj1)[i] @ spin_operator(obj2)[i] for i in range(3)])
+            ham2 += qml.sum(*[spin_operator2(obj1)[i] @ spin_operator2(obj2)[i] for i in range(9)])
+        ham = ham1 / 4 - beta * ham2 / 16
+        coeffs, obs = qml.simplify(ham).terms()
+        coeffs = torch.tensor(coeffs).real
+        return qml.Hamiltonian(coeffs, obs)
+
     def qutrit_symmetric_ansatz(params: torch.Tensor):
         for i in range(n_qudits - 1):
             obj = list(range(n_qubits - 2 * i - 4, n_qubits - 2 * i))
@@ -34,6 +61,12 @@ def testing(n_qudits: int, batch_size: int, n_test: int):
         params = params.reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
         qml.layer(qutrit_symmetric_ansatz, n_layers, params)
         return qml.state()
+
+    @qml.qnode(dev, interface='torch', diff_method='best')
+    def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
+        params = params.reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
+        qml.layer(qutrit_symmetric_ansatz, n_layers, params)
+        return qml.expval(Ham)
 
     class VAE_Model(nn.Module):
 
@@ -87,11 +120,13 @@ def testing(n_qudits: int, batch_size: int, n_test: int):
     ED_states = loadmat('./mats/ED_degeneracy.mat')[f'nqd{n_qudits}'][0, 1].T
     overlaps = np.empty([0, ED_states.shape[0]])
     decoded_states = np.empty([0, 3**n_qudits])
+    Ham = Hamiltonian(n_qudits, beta)
 
     start = time.perf_counter()
     for i, batch in enumerate(test_data):
         params, _, _ = model(batch.to(device))
         states = circuit_state(n_layers, params)
+        energy = circuit_expval(n_layers, params, Ham)
 
         cos_sims = torch.empty((0), device=device)
         fidelities = torch.empty((0), device=device)
@@ -117,14 +152,16 @@ def testing(n_qudits: int, batch_size: int, n_test: int):
         info(
             f'Cos_Sim: {cos_sim:.8f}, Fidelity: {fidelities.max():.8f} {fidelities.mean():.8f} {fidelities.min():.8f}, Rank: {rank}, {i+1}/{n_test}, {t:.2f}'
         )
+        info(f'Energy: {energy.detach().cpu().numpy()}')
 
     updatemat(f'{path}.mat', {'overlaps': overlaps})
     info(f'Save {path}.mat with overlaps')
 
 
 n_layers = 2
-n_qudits = 7
+n_qudits = 6
 n_test = 100
+beta = -1 / 3
 batch_size = 10
 n_qubits = 2 * n_qudits
 n_samples = batch_size * n_test

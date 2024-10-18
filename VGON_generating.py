@@ -70,13 +70,13 @@ def testing(n_qudits: int, batch_size: int, n_test: int):
 
     @qml.qnode(dev, interface='torch', diff_method='best')
     def circuit_state(n_layers: int, params: torch.Tensor):
-        params = params.reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
+        params = params.transpose(0, 1).reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
         qml.layer(qutrit_symmetric_ansatz, n_layers, params)
         return qml.state()
 
     @qml.qnode(dev, interface='torch', diff_method='best')
     def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
-        params = params.reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
+        params = params.transpose(0, 1).reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
         qml.layer(qutrit_symmetric_ansatz, n_layers, params)
         return qml.expval(Ham)
 
@@ -131,7 +131,6 @@ def testing(n_qudits: int, batch_size: int, n_test: int):
 
     ED_states = loadmat('./mats/ED_degeneracy.mat')[f'nqd{n_qudits}'][0, 1].T
     overlaps = np.empty([0, ED_states.shape[0]])
-    decoded_states = np.empty([0, 3**n_qudits])
     Ham = Hamiltonian(n_qudits, beta)
 
     start = time.perf_counter()
@@ -150,22 +149,20 @@ def testing(n_qudits: int, batch_size: int, n_test: int):
         rank = matrix_rank(states)
         for state in states:
             decoded_state = symmetric_decoding(state, n_qudits)
-            decoded_states = np.vstack((decoded_states, decoded_state))
             overlap = [fidelity(decoded_state, ED_state) for ED_state in ED_states]
             overlaps = np.vstack((overlaps, overlap))
 
         t = time.perf_counter() - start
-        info(f'Cos_Sim: {cos_sim:.8f}, Energy: {energy.mean():.8f}, {energy.max():.6f}, {energy.min():.6f}, Rank: {rank}, {i+1}/{n_test}, {t:.2f}')
+        info(f'Cos_Sim: {cos_sim:.12f}, Energy: {energy.mean():.12f}, {energy.max():.8f}, {energy.min():.8f}, Rank: {rank}, {i+1}/{n_test}, {t:.2f}')
         if rank < batch_size:
-            info(f'Rank: {rank} < BatchSize: {batch_size}')
+            info(f'Rank: {rank} < Batch Size: {batch_size}')
         if energy.max() > energy_upper:
-            info(f'Energy Max: {energy.max():.8f} > Energy Upper: {energy_upper:.8f}')
+            info(f'Energy Max in Batch: {energy.max():.12f} > Energy Upper Bound: {energy_upper:.4f}')
 
     updatemat(f'{path}.mat', {'overlaps': overlaps})
     info(f'Save {path}.mat with overlaps')
 
 
-n_test = 50
 n_qudits = 7
 n_qubits = 2 * n_qudits
 
@@ -189,9 +186,15 @@ for name in sorted(os.listdir('./mats')):
             kl_div = load['kl_div'].item()
             cos_sim = load['cos_sim'].item()
             batch_size = load['batch_size'].item()
+            if batch_size == 10:
+                n_test = 100
+            elif batch_size == 26:
+                n_test = 40
+            else:
+                n_test = int(input('Input number of test: '))
 
             logger.add_handler()
             info(f'Load {path}.mat without overlaps')
-            info(f'Cos_Sim: {cos_sim:.8f}, Energy: {energy:.8f}, KL: {kl_div:.4e}, Batch Size: {batch_size}')
+            info(f'Cos_Sim: {cos_sim:.12f}, Energy: {energy:.12f}, KL: {kl_div:.4e}, Batch Size: {batch_size}')
             testing(n_qudits, batch_size, n_test)
             logger.remove_handler()

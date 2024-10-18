@@ -90,14 +90,14 @@ def qutrit_symmetric_ansatz(params: torch.Tensor):
 
 @qml.qnode(dev, interface='torch', diff_method='best')
 def circuit_state(n_layers: int, params: torch.Tensor):
-    params = params.reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
+    params = params.transpose(0, 1).reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
     qml.layer(qutrit_symmetric_ansatz, n_layers, params)
     return qml.state()
 
 
 @qml.qnode(dev, interface='torch', diff_method='best')
 def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
-    params = params.reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
+    params = params.transpose(0, 1).reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
     qml.layer(qutrit_symmetric_ansatz, n_layers, params)
     return qml.expval(Ham)
 

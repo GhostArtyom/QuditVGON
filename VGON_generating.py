@@ -25,7 +25,7 @@ torch.set_printoptions(precision=8, linewidth=200)
 def testing(n_qudits: int, batch_size: int, n_test: int):
     n_layers = 2
     beta = -1 / 3
-    energy_tol = 1e-1
+    energy_tol = 1e-2
     n_qubits = 2 * n_qudits
     n_samples = batch_size * n_test
     n_params = n_layers * (n_qudits - 1) * NUM_PR
@@ -153,7 +153,7 @@ def testing(n_qudits: int, batch_size: int, n_test: int):
             overlaps = np.vstack((overlaps, overlap))
 
         t = time.perf_counter() - start
-        info(f'Cos_Sim: {cos_sim:.12f}, Energy: {energy.mean():.12f}, {energy.max():.8f}, {energy.min():.8f}, Rank: {rank}, {i+1}/{n_test}, {t:.2f}')
+        info(f'Cos_Sim: {cos_sim:.8f}, {cos_sims.max():.6f}, {cos_sims.min():.6f}, Energy: {energy.mean():.8f}, {energy.max():.6f}, {energy.min():.6f}, {i+1}/{n_test}, {t:.2f}')
         if rank < batch_size:
             info(f'Rank: {rank} < Batch Size: {batch_size}')
         if energy.max() > energy_upper:
@@ -188,6 +188,8 @@ for name in sorted(os.listdir('./mats')):
             batch_size = load['batch_size'].item()
             if batch_size == 10:
                 n_test = 100
+            elif batch_size == 16:
+                n_test = 60
             elif batch_size == 26:
                 n_test = 40
             else:

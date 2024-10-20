@@ -21,10 +21,10 @@ n_layers = 2
 n_qudits = 7
 beta = -1 / 3
 n_iter = 5000
-batch_size = 26
+batch_size = 16
 learning_rate = 1e-3
 energy_coeff, kl_coeff = 1, 1
-energy_tol, kl_tol = 1e-2, 1e-6
+energy_tol, kl_tol = 1e-2, 1e-5
 
 n_qubits = 2 * n_qudits
 n_samples = batch_size * n_iter
@@ -152,8 +152,11 @@ class VAE_Model(nn.Module):
 
 
 Ham = Hamiltonian(n_qudits, beta)
-
 model = VAE_Model(n_params, z_dim, h_dim).to(device)
+checkpoint = input('Input checkpoint filename: ')
+if checkpoint:
+    state_dict = torch.load(f'./mats/{checkpoint}.pt', map_location=device, weights_only=True)
+    model.load_state_dict(state_dict)
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 data_dist = dists.Uniform(0, 1).sample([n_samples, n_params])
@@ -175,19 +178,19 @@ for i, batch in enumerate(train_data):
     for ind in combinations(range(batch_size), 2):
         sim = torch.cosine_similarity(params[ind[0], :], params[ind[1], :], dim=0)
         cos_sims = torch.cat((cos_sims, sim.unsqueeze(0)), dim=0)
-    cos_sim = cos_sims.mean()
+    cos_sim = cos_sims.max()  # mean()
 
-    cos_sim_coeff = cos_sim.abs()
+    cos_sim_coeff = 10 * cos_sim + 1 if cos_sim > 0 else 1
     loss = energy_coeff * energy + kl_coeff * kl_div + cos_sim_coeff * cos_sim
     loss.backward()
     optimizer.step()
 
     t = time.perf_counter() - start
     loss, energy, kl_div, cos_sim = loss.item(), energy.item(), kl_div.item(), cos_sim.item()
-    info(f'Loss: {loss:.8f}, Energy: {energy:.8f}, KL: {kl_div:.4e}, Cos_Sim: {cos_sim:.8f}, {i+1}/{n_iter}, {t:.2f}')
+    info(f'Loss: {loss:.8f}, Energy: {energy:.8f}, KL: {kl_div:.4e}, Cos_Sim: {cos_sim:.8f} * {cos_sim_coeff:.4f}, {i+1}/{n_iter}, {t:.2f}')
 
     energy_gap = energy - ground_state_energy
-    if energy_gap < energy_tol and kl_div < kl_tol or i >= n_iter - 1:
+    if (i + 1) % 1000 == 0 or i + 1 >= n_iter:
         params_res = params.detach().cpu().numpy()
         state_res = circuit_state(n_layers, params_res)
         time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
@@ -209,4 +212,4 @@ for i, batch in enumerate(train_data):
         }
         savemat(f'{path}.mat', mat_dict)
         torch.save(model.state_dict(), f'{path}.pt')
-        info(f'Energy Gap: {energy_gap:.4e}, KL: {kl_div:.4e}, Save: {path}.mat&pt')
+        info(f'Energy Gap: {energy_gap:.4e}, KL: {kl_div:.4e}, {i+1}/{n_iter}, Save: {path}.mat&pt')

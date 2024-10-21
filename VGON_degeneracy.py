@@ -36,7 +36,7 @@ list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
 h_dim = np.power(2, list_z).astype(int)
 
 dev = qml.device('default.qubit', n_qubits)
-gpu_memory = GPUtil.getGPUs()[0].memoryUtil
+gpu_memory = gpu[0].memoryUtil if (gpu := GPUtil.getGPUs()) else 1
 if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 14:
     device = torch.device('cuda')
 else:

@@ -170,7 +170,7 @@ n_qudits = 7
 n_qubits = 2 * n_qudits
 
 dev = qml.device('default.qubit', n_qubits)
-gpu_memory = GPUtil.getGPUs()[0].memoryUtil
+gpu_memory = gpu[0].memoryUtil if (gpu := GPUtil.getGPUs()) else 1
 if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 14:
     device = torch.device('cuda')
 else:

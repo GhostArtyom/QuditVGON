@@ -1,11 +1,11 @@
-import sys
 import time
 import torch
-import logging
+import GPUtil
 import numpy as np
 import pennylane as qml
 from typing import List
 from logging import info
+from logger import Logger
 from utils import updatemat
 from qutrit_synthesis import NUM_PR, two_qutrit_unitary_synthesis
 
@@ -18,13 +18,15 @@ learning_rate = 1e-3
 
 n_qubits = 2 * n_qudits
 dev = qml.device('default.qubit', n_qubits)
-if torch.cuda.is_available() and n_qubits >= 14:
+gpu_memory = GPUtil.getGPUs()[0].memoryUtil
+if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 14:
     device = torch.device('cuda')
 else:
     device = torch.device('cpu')
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+log = f'./logs/VQE_nqd{n_qudits}_degeneracy.log'
+logger = Logger(log)
+logger.add_handler()
 
 
 def spin_operator(obj: List[int]):
@@ -78,16 +80,7 @@ def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
 
 
 def running(n_layers: int, n_qudits: int, beta: float, epochs: int, learning_rate: float):
-    log = f'./logs/VQE_nqd{n_qudits}.log'
-    file_handler = logging.FileHandler(log)
-    file_handler.setLevel(logging.INFO)
-    stream_handler = logging.StreamHandler(sys.stdout)
-    stream_handler.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s %(message)s')
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-    logger.addHandler(stream_handler)
-
+    logger.add_handler()
     info(f'Repeat: {r+1}, Learning Rate: {learning_rate}')
     info(f'Coefficient beta: {beta:.4f}')
     info(f'Number of qudits: {n_qudits}')
@@ -130,8 +123,7 @@ def running(n_layers: int, n_qudits: int, beta: float, epochs: int, learning_rat
     mat_path = f'./mats/VQE_degeneracy.mat'
     updatemat(mat_path, mat_dict)
     info(f'Save: {mat_path} T{time_str}')
-    logger.removeHandler(file_handler)
-    logger.removeHandler(stream_handler)
+    logger.remove_handler()
 
 
 for r in range(repetition):

@@ -1,6 +1,6 @@
-import sys
 import time
 import torch
+import GPUtil
 import numpy as np
 import torch.nn as nn
 import pennylane as qml
@@ -36,7 +36,8 @@ list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
 h_dim = np.power(2, list_z).astype(int)
 
 dev = qml.device('default.qubit', n_qubits)
-if torch.cuda.is_available() and n_qubits >= 14:
+gpu_memory = GPUtil.getGPUs()[0].memoryUtil
+if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 14:
     device = torch.device('cuda')
 else:
     device = torch.device('cpu')

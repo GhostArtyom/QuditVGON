@@ -2,6 +2,7 @@ import os
 import re
 import time
 import torch
+import GPUtil
 import numpy as np
 import torch.nn as nn
 import pennylane as qml
@@ -153,21 +154,24 @@ def testing(n_qudits: int, batch_size: int, n_test: int):
             overlaps = np.vstack((overlaps, overlap))
 
         t = time.perf_counter() - start
-        info(f'Cos_Sim: {cos_sim:.8f}, {cos_sims.max():.6f}, {cos_sims.min():.6f}, Energy: {energy.mean():.8f}, {energy.max():.6f}, {energy.min():.6f}, {i+1}/{n_test}, {t:.2f}')
+        info(
+            f'Cos_Sim: {cos_sim:.8f}, {cos_sims.max():.6f}, {cos_sims.min():.6f}, Energy: {energy.mean():.8f}, {energy.max():.6f}, {energy.min():.6f}, {i+1}/{n_test}, {t:.2f}'
+        )
         if rank < batch_size:
             info(f'Rank: {rank} < Batch Size: {batch_size}')
         if energy.max() > energy_upper:
             info(f'Energy Max in Batch: {energy.max():.12f} > Energy Upper Bound: {energy_upper:.4f}')
 
     updatemat(f'{path}.mat', {'overlaps': overlaps})
-    info(f'Save {path}.mat with overlaps')
+    info(f'Save: {path}.mat with overlaps')
 
 
 n_qudits = 7
 n_qubits = 2 * n_qudits
 
 dev = qml.device('default.qubit', n_qubits)
-if torch.cuda.is_available() and n_qubits >= 14:
+gpu_memory = GPUtil.getGPUs()[0].memoryUtil
+if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 14:
     device = torch.device('cuda')
 else:
     device = torch.device('cpu')
@@ -196,7 +200,7 @@ for name in sorted(os.listdir('./mats')):
                 n_test = int(input('Input number of test: '))
 
             logger.add_handler()
-            info(f'Load {path}.mat without overlaps')
+            info(f'Load: {path}.mat without overlaps')
             info(f'Cos_Sim: {cos_sim:.12f}, Energy: {energy:.12f}, KL: {kl_div:.4e}, Batch Size: {batch_size}')
             testing(n_qudits, batch_size, n_test)
             logger.remove_handler()

@@ -16,11 +16,12 @@ from qutrit_synthesis import NUM_PR, two_qutrit_unitary_synthesis
 
 np.set_printoptions(precision=8, linewidth=200)
 torch.set_printoptions(precision=8, linewidth=200)
+checkpoint = input('Input checkpoint filename: ')
 
 n_layers = 2
 n_qudits = 7
 beta = -1 / 3
-n_iter = 5000
+n_iter = 2000
 batch_size = 16
 learning_rate = 1e-3
 energy_coeff, kl_coeff = 1, 1
@@ -154,7 +155,6 @@ class VAE_Model(nn.Module):
 
 Ham = Hamiltonian(n_qudits, beta)
 model = VAE_Model(n_params, z_dim, h_dim).to(device)
-checkpoint = input('Input checkpoint filename: ')
 if checkpoint:
     state_dict = torch.load(f'./mats/{checkpoint}.pt', map_location=device, weights_only=True)
     model.load_state_dict(state_dict)
@@ -175,20 +175,27 @@ for i, batch in enumerate(train_data):
     kl_div = -0.5 * (1 + log_var - mean.pow(2) - log_var.exp())
     kl_div = kl_div.mean()
 
+    states = circuit_state(n_layers, params)
     cos_sims = torch.empty((0), device=device)
+    fidelities = torch.empty((0), device=device)
     for ind in combinations(range(batch_size), 2):
         sim = torch.cosine_similarity(params[ind[0], :], params[ind[1], :], dim=0)
         cos_sims = torch.cat((cos_sims, sim.unsqueeze(0)), dim=0)
-    cos_sim = cos_sims.max()  # mean()
+        fidelity_state = qml.math.fidelity_statevector(states[ind[0]], states[ind[1]])
+        fidelities = torch.cat((fidelities, fidelity_state.unsqueeze(0)), dim=0)
+    cos_sim = cos_sims.mean()
+    fidelity = fidelities.max()
 
-    cos_sim_coeff = 10 * cos_sim + 1 if cos_sim > 0 else 1
-    loss = energy_coeff * energy + kl_coeff * kl_div + cos_sim_coeff * cos_sim
+    fidelity_coeff = 1
+    loss = energy_coeff * energy + kl_coeff * kl_div + fidelity_coeff * fidelity
     loss.backward()
     optimizer.step()
 
     t = time.perf_counter() - start
-    loss, energy, kl_div, cos_sim = loss.item(), energy.item(), kl_div.item(), cos_sim.item()
-    info(f'Loss: {loss:.8f}, Energy: {energy:.8f}, KL: {kl_div:.4e}, Cos_Sim: {cos_sim:.8f} * {cos_sim_coeff:.4f}, {i+1}/{n_iter}, {t:.2f}')
+    loss, energy, kl_div, cos_sim, fidelity = loss.item(), energy.item(), kl_div.item(), cos_sim.item(), fidelity.item()
+    info(
+        f'Loss: {loss:.8f}, Energy: {energy:.8f}, KL: {kl_div:.4e}, Fidelity: {fidelities.max():.8f}, {fidelities.mean():.8f}, {fidelities.min():.8f}, Cos_Sim: {cos_sim:.8f}, {i+1}/{n_iter}, {t:.2f}'
+    )
 
     energy_gap = energy - ground_state_energy
     if (i + 1) % 1000 == 0 or i + 1 >= n_iter:
@@ -205,6 +212,7 @@ for i, batch in enumerate(train_data):
             'cos_sim': cos_sim,
             'state': state_res,
             'params': params_res,
+            'fidelity': fidelity,
             'n_qudits': n_qudits,
             'n_qubits': n_qubits,
             'batch_size': batch_size,

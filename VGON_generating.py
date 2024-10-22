@@ -141,10 +141,13 @@ def testing(n_qudits: int, batch_size: int, n_test: int):
         energy = circuit_expval(n_layers, params, Ham)
 
         cos_sims = torch.empty((0), device=device)
+        fidelities = torch.empty((0), device=device)
         for ind in combinations(range(batch_size), 2):
             sim = torch.cosine_similarity(params[ind[0], :], params[ind[1], :], dim=0)
             cos_sims = torch.cat((cos_sims, sim.unsqueeze(0)), dim=0)
-        cos_sim = cos_sims.mean().item()
+            fidelity_state = qml.math.fidelity_statevector(states[ind[0]], states[ind[1]])
+            fidelities = torch.cat((fidelities, fidelity_state.unsqueeze(0)), dim=0)
+        cos_sim = cos_sims.mean()
 
         states = states.detach().cpu().numpy()
         rank = matrix_rank(states)
@@ -155,12 +158,12 @@ def testing(n_qudits: int, batch_size: int, n_test: int):
 
         t = time.perf_counter() - start
         info(
-            f'Cos_Sim: {cos_sim:.8f}, {cos_sims.max():.6f}, {cos_sims.min():.6f}, Energy: {energy.mean():.8f}, {energy.max():.6f}, {energy.min():.6f}, {i+1}/{n_test}, {t:.2f}'
+            f'Energy: {energy.max():.8f}, {energy.mean():.8f}, {energy.min():.8f}, Fidelity: {fidelities.max():.8f}, {fidelities.mean():.8f}, {fidelities.min():.8f}, Cos_Sim: {cos_sim:.8f}, {i+1}/{n_test}, {t:.2f}'
         )
         if rank < batch_size:
             info(f'Rank: {rank} < Batch Size: {batch_size}')
-        if energy.max() > energy_upper:
-            info(f'Energy Max in Batch: {energy.max():.12f} > Energy Upper Bound: {energy_upper:.4f}')
+        # if energy.max() > energy_upper:
+        #     info(f'Energy Max in Batch: {energy.max():.12f} > Energy Upper Bound: {energy_upper:.4f}')
 
     updatemat(f'{path}.mat', {'overlaps': overlaps})
     info(f'Save: {path}.mat with overlaps')

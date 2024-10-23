@@ -170,7 +170,7 @@ for i, batch in enumerate(train_data):
     params, mean, log_var = model(batch.to(device))
 
     energy = circuit_expval(n_layers, params, Ham)
-    energy = energy.mean()
+    energy_mean = energy.mean()
 
     kl_div = -0.5 * (1 + log_var - mean.pow(2) - log_var.exp())
     kl_div = kl_div.mean()
@@ -181,43 +181,40 @@ for i, batch in enumerate(train_data):
     for ind in combinations(range(batch_size), 2):
         sim = torch.cosine_similarity(params[ind[0], :], params[ind[1], :], dim=0)
         cos_sims = torch.cat((cos_sims, sim.unsqueeze(0)), dim=0)
-        fidelity_state = qml.math.fidelity_statevector(states[ind[0]], states[ind[1]])
-        fidelities = torch.cat((fidelities, fidelity_state.unsqueeze(0)), dim=0)
+        fidelity = qml.math.fidelity_statevector(states[ind[0]], states[ind[1]])
+        fidelities = torch.cat((fidelities, fidelity.unsqueeze(0)), dim=0)
     cos_sim = cos_sims.mean()
-    fidelity = fidelities.max()
+    fidelity_max = fidelities.max()
+    fidelity_min = fidelities.min()
+    fidelity_mean = fidelities.mean()
 
-    fidelity_coeff = 1
-    loss = energy_coeff * energy + kl_coeff * kl_div + fidelity_coeff * fidelity
+    fidelity_max_coeff, fidelity_mean_coeff = fidelity_max.item(), 2 * fidelity_mean.item()
+    loss = energy_coeff * energy_mean + kl_coeff * kl_div + fidelity_max_coeff * fidelity_max + fidelity_mean_coeff * fidelity_mean
     loss.backward()
     optimizer.step()
 
     t = time.perf_counter() - start
-    loss, energy, kl_div, cos_sim, fidelity = loss.item(), energy.item(), kl_div.item(), cos_sim.item(), fidelity.item()
-    info(
-        f'Loss: {loss:.8f}, Energy: {energy:.8f}, KL: {kl_div:.4e}, Fidelity: {fidelities.max():.8f}, {fidelities.mean():.8f}, {fidelities.min():.8f}, Cos_Sim: {cos_sim:.8f}, {i+1}/{n_iter}, {t:.2f}'
-    )
+    fidelity_str = f'Fidelity: {fidelity_max_coeff:.4f}*{fidelity_max:.8f}, {fidelity_mean_coeff:.4f}*{fidelity_mean:.8f}, {fidelity_min:.8f}'
+    info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, KL: {kl_div:.4e}, {fidelity_str}, {i+1}/{n_iter}, {t:.2f}')
 
-    energy_gap = energy - ground_state_energy
-    if (i + 1) % 1000 == 0 or i + 1 >= n_iter:
-        params_res = params.detach().cpu().numpy()
-        state_res = circuit_state(n_layers, params_res)
+    energy_gap = energy_mean - ground_state_energy
+    if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and fidelity_max < 0.5):
         time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
         path = f'./mats/VGON_nqd{n_qudits}_{time_str}'
         mat_dict = {
             'beta': beta,
-            'loss': loss,
             'n_iter': n_iter,
-            'energy': energy,
-            'kl_div': kl_div,
-            'cos_sim': cos_sim,
-            'state': state_res,
-            'params': params_res,
-            'fidelity': fidelity,
+            'loss': loss.item(),
             'n_qudits': n_qudits,
             'n_qubits': n_qubits,
+            'kl_div': kl_div.item(),
             'batch_size': batch_size,
             'energy_tol': energy_tol,
-            'learning_rate': learning_rate
+            'cos_sim': cos_sim.item(),
+            'energy': energy_mean.item(),
+            'learning_rate': learning_rate,
+            'fidelity_max': fidelity_max.item(),
+            'fidelity_mean': fidelity_mean.item()
         }
         savemat(f'{path}.mat', mat_dict)
         torch.save(model.state_dict(), f'{path}.pt')

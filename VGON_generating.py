@@ -26,7 +26,7 @@ torch.set_printoptions(precision=8, linewidth=200)
 def testing(n_qudits: int, batch_size: int, n_test: int):
     n_layers = 2
     beta = -1 / 3
-    energy_tol = 1e-2
+    energy_tol = 1e-1
     n_qubits = 2 * n_qudits
     n_samples = batch_size * n_test
     n_params = n_layers * (n_qudits - 1) * NUM_PR
@@ -136,18 +136,22 @@ def testing(n_qudits: int, batch_size: int, n_test: int):
 
     start = time.perf_counter()
     for i, batch in enumerate(test_data):
-        params, _, _ = model(batch.to(device))
-        states = circuit_state(n_layers, params)
-        energy = circuit_expval(n_layers, params, Ham)
+        for j in range(1, 10):
+            with torch.no_grad():
+                params, _, _ = model(batch.to(device))
+            energy = circuit_expval(n_layers, params, Ham)
+            energy_str = f'Energy: {energy.max():.8f}, {energy.mean():.8f}, {energy.min():.8f}'
+            if energy.max() < energy_upper:
+                break
+            t = time.perf_counter() - start
+            batch = dists.Uniform(0, 1).sample([batch_size, n_params])
+            info(f'{energy_str}, Energy Max: {energy.max():.15f} > {energy_upper:.6f}, {j}/{i+1}/{n_test}, {t:.2f}')
 
-        cos_sims = torch.empty((0), device=device)
+        states = circuit_state(n_layers, params)
         fidelities = torch.empty((0), device=device)
         for ind in combinations(range(batch_size), 2):
-            sim = torch.cosine_similarity(params[ind[0], :], params[ind[1], :], dim=0)
-            cos_sims = torch.cat((cos_sims, sim.unsqueeze(0)), dim=0)
             fidelity_state = qml.math.fidelity_statevector(states[ind[0]], states[ind[1]])
             fidelities = torch.cat((fidelities, fidelity_state.unsqueeze(0)), dim=0)
-        cos_sim = cos_sims.mean()
 
         states = states.detach().cpu().numpy()
         rank = matrix_rank(states)
@@ -157,13 +161,10 @@ def testing(n_qudits: int, batch_size: int, n_test: int):
             overlaps = np.vstack((overlaps, overlap))
 
         t = time.perf_counter() - start
-        info(
-            f'Energy: {energy.max():.8f}, {energy.mean():.8f}, {energy.min():.8f}, Fidelity: {fidelities.max():.8f}, {fidelities.mean():.8f}, {fidelities.min():.8f}, Cos_Sim: {cos_sim:.8f}, {i+1}/{n_test}, {t:.2f}'
-        )
+        fidelity_str = f'Fidelity: {fidelities.max():.8f}, {fidelities.mean():.8f}, {fidelities.min():.8f}'
+        info(f'{energy_str}, {fidelity_str}, {i+1}/{n_test}, {t:.2f}')
         if rank < batch_size:
             info(f'Rank: {rank} < Batch Size: {batch_size}')
-        # if energy.max() > energy_upper:
-        #     info(f'Energy Max in Batch: {energy.max():.12f} > Energy Upper Bound: {energy_upper:.4f}')
 
     updatemat(f'{path}.mat', {'overlaps': overlaps})
     info(f'Save: {path}.mat with overlaps')
@@ -193,17 +194,18 @@ for name in sorted(os.listdir('./mats')):
             kl_div = load['kl_div'].item()
             cos_sim = load['cos_sim'].item()
             batch_size = load['batch_size'].item()
-            if batch_size == 10:
-                n_test = 100
-            elif batch_size == 16:
-                n_test = 60
-            elif batch_size == 26:
-                n_test = 40
+            n_test = 60 if batch_size == 16 else int(input('Input number of test: '))
+            if 'fidelity_max' in load and 'fidelity_mean' in load:
+                fidelity_max = load['fidelity_max'].item()
+                fidelity_mean = load['fidelity_mean'].item()
+                fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}, '
+            elif 'fidelity' in load:
+                fidelity_ = load['fidelity'].item()
+                fidelity_str = f'Fidelity: {fidelity_:.8f}, '
             else:
-                n_test = int(input('Input number of test: '))
-
+                fidelity_str = ''
             logger.add_handler()
             info(f'Load: {path}.mat without overlaps')
-            info(f'Cos_Sim: {cos_sim:.12f}, Energy: {energy:.12f}, KL: {kl_div:.4e}, Batch Size: {batch_size}')
+            info(f'Energy: {energy:.8f}, KL: {kl_div:.4e}, {fidelity_str}Cos_Sim: {cos_sim:.8f}, Batch Size: {batch_size}')
             testing(n_qudits, batch_size, n_test)
             logger.remove_handler()

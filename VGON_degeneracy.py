@@ -182,7 +182,8 @@ for i, batch in enumerate(train_data):
     cos_sim_max = cos_sims.max()
     cos_sim_mean = cos_sims.mean()
 
-    cos_sim_mean_coeff = 0.4 * (10 * cos_sim_mean).ceil().item()
+    coeff = (energy_mean - ground_state_energy).ceil()
+    cos_sim_mean_coeff = coeff / 10 * (10 * cos_sim_mean).ceil() if cos_sim_mean > 0 else 0
     loss = energy_coeff * energy_mean + kl_coeff * kl_div + cos_sim_mean_coeff * cos_sim_mean
     loss.backward()
     optimizer.step()
@@ -192,7 +193,7 @@ for i, batch in enumerate(train_data):
     info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, KL: {kl_div:.4e}, {cos_sim_str}, {i+1}/{n_iter}, {t:.2f}')
 
     energy_gap = energy_mean - ground_state_energy
-    if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and cos_sim_mean < 0.5):
+    if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and kl_div < kl_tol):
         time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
         path = f'./mats/VGON_nqd{n_qudits}_{time_str}'
         mat_dict = {

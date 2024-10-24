@@ -23,15 +23,14 @@ np.set_printoptions(precision=8, linewidth=200)
 torch.set_printoptions(precision=8, linewidth=200)
 
 
-def testing(n_qudits: int, batch_size: int, n_test: int):
+def testing(n_qudits: int, batch_size: int, n_test: int, energy: float):
     n_layers = 2
     beta = -1 / 3
-    energy_tol = 1e-1
     n_qubits = 2 * n_qudits
     n_samples = batch_size * n_test
     n_params = n_layers * (n_qudits - 1) * NUM_PR
     ground_state_energy = -2 / 3 * (n_qudits - 1)
-    energy_upper = ground_state_energy + energy_tol
+    energy_upper = ground_state_energy + (0.05 if energy - ground_state_energy < 1e-2 else 0.1)
 
     z_dim = 50
     list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
@@ -208,5 +207,5 @@ for name in sorted(os.listdir('./mats')):
             logger.add_handler()
             info(f'Load: {path}.mat without overlaps')
             info(f'Energy: {energy:.8f}, KL: {kl_div:.4e}, {cos_sim_str}, Batch Size: {batch_size}')
-            testing(n_qudits, batch_size, n_test)
+            testing(n_qudits, batch_size, n_test, energy)
             logger.remove_handler()

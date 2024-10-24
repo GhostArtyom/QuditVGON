@@ -37,7 +37,7 @@ list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
 h_dim = np.power(2, list_z).astype(int)
 
 dev = qml.device('default.qubit', n_qubits)
-gpu_memory = gpu[0].memoryUtil if (gpu := GPUtil.getGPUs()) else 1
+gpu_memory = gpus[0].memoryUtil if (gpus := GPUtil.getGPUs()) else 1
 if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 14:
     device = torch.device('cuda')
 else:
@@ -183,13 +183,14 @@ for i, batch in enumerate(train_data):
     cos_sim_mean = cos_sims.mean()
 
     coeff = (energy_mean - ground_state_energy).ceil()
+    cos_sim_max_coeff = coeff / 5 * (50 * (cos_sim_max - 0.8)).ceil() if cos_sim_max > 0.8 else 0
     cos_sim_mean_coeff = coeff / 10 * (10 * cos_sim_mean).ceil() if cos_sim_mean > 0 else 0
-    loss = energy_coeff * energy_mean + kl_coeff * kl_div + cos_sim_mean_coeff * cos_sim_mean
+    loss = energy_coeff * energy_mean + kl_coeff * kl_div + cos_sim_max_coeff * cos_sim_max + cos_sim_mean_coeff * cos_sim_mean
     loss.backward()
     optimizer.step()
 
     t = time.perf_counter() - start
-    cos_sim_str = f'Cos_Sim: {cos_sim_max:.8f}, {cos_sim_mean_coeff:.1f}*{cos_sim_mean:.8f}, {cos_sims.min():.8f}'
+    cos_sim_str = f'Cos_Sim: {cos_sim_max_coeff:.1f}*{cos_sim_max:.8f}, {cos_sim_mean_coeff:.1f}*{cos_sim_mean:.8f}, {cos_sims.min():.8f}'
     info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, KL: {kl_div:.4e}, {cos_sim_str}, {i+1}/{n_iter}, {t:.2f}')
 
     energy_gap = energy_mean - ground_state_energy
@@ -206,6 +207,7 @@ for i, batch in enumerate(train_data):
             'batch_size': batch_size,
             'energy_tol': energy_tol,
             'energy': energy_mean.item(),
+            'n_train': f'{i+1}/{n_iter}',
             'learning_rate': learning_rate,
             'cos_sim_max': cos_sim_max.item(),
             'cos_sim_mean': cos_sim_mean.item()

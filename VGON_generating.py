@@ -23,16 +23,9 @@ np.set_printoptions(precision=8, linewidth=200)
 torch.set_printoptions(precision=8, linewidth=200)
 
 
-def testing(n_qudits: int, batch_size: int, n_test: int, energy: float):
-    n_layers = 2
-    beta = -1 / 3
-    n_qubits = 2 * n_qudits
+def testing(n_qudits: int, n_qubits: int, batch_size: int, n_test: int, energy_upper: float):
     n_samples = batch_size * n_test
     n_params = n_layers * (n_qudits - 1) * NUM_PR
-    ground_state_energy = -2 / 3 * (n_qudits - 1)
-    energy_upper = ground_state_energy + (0.05 if energy - ground_state_energy < 1e-2 else 0.1)
-
-    z_dim = 50
     list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
     h_dim = np.power(2, list_z).astype(int)
 
@@ -173,11 +166,15 @@ def testing(n_qudits: int, batch_size: int, n_test: int, energy: float):
     info(f'Save: {path}.mat with overlaps')
 
 
+z_dim = 50
+n_layers = 2
 n_qudits = 7
+beta = -1 / 3
 n_qubits = 2 * n_qudits
+ground_state_energy = -2 / 3 * (n_qudits - 1)
 
 dev = qml.device('default.qubit', n_qubits)
-gpu_memory = gpu[0].memoryUtil if (gpu := GPUtil.getGPUs()) else 1
+gpu_memory = gpus[0].memoryUtil if (gpus := GPUtil.getGPUs()) else 1
 if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 14:
     device = torch.device('cuda')
 else:
@@ -185,6 +182,12 @@ else:
 
 log = f'./logs/VGON_nqd{n_qudits}_generating.log'
 logger = Logger(log)
+logger.add_handler()
+
+info(f'PyTorch Device: {device}')
+info(f'Number of qudits: {n_qudits}')
+info(f'Number of qubits: {n_qubits}')
+info(f'Ground State Energy: {ground_state_energy:.4f}')
 
 pattern = f'(VGON_nqd{n_qudits}' + r'_\d{8}_\d{6}).mat'
 for name in sorted(os.listdir('./mats')):
@@ -197,6 +200,7 @@ for name in sorted(os.listdir('./mats')):
             kl_div = load['kl_div'].item()
             batch_size = load['batch_size'].item()
             n_test = 60 if batch_size == 16 else int(input('Input number of test: '))
+            energy_upper = ground_state_energy + (0.05 if energy - ground_state_energy < 1e-2 else 0.1)
             if 'cos_sim' in load:
                 cos_sim = load['cos_sim'].item()
                 cos_sim_str = f'Cos_Sim: {cos_sim:.8f}'
@@ -207,5 +211,5 @@ for name in sorted(os.listdir('./mats')):
             logger.add_handler()
             info(f'Load: {path}.mat without overlaps')
             info(f'Energy: {energy:.8f}, KL: {kl_div:.4e}, {cos_sim_str}, Batch Size: {batch_size}')
-            testing(n_qudits, batch_size, n_test, energy)
+            testing(n_qudits, n_qubits, batch_size, n_test, energy_upper)
             logger.remove_handler()

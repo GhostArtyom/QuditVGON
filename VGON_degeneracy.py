@@ -16,13 +16,14 @@ from qutrit_synthesis import NUM_PR, two_qutrit_unitary_synthesis
 
 np.set_printoptions(precision=8, linewidth=200)
 torch.set_printoptions(precision=8, linewidth=200)
-checkpoint = input('Input checkpoint filename: ')
+checkpoint = None  # input('Input checkpoint filename: ')
 
 n_layers = 2
 n_qudits = 7
 beta = -1 / 3
 n_iter = 2000
 batch_size = 16
+weight_decay = 1e-2
 learning_rate = 1e-3
 energy_coeff, kl_coeff = 1, 1
 energy_tol, kl_tol = 1e-2, 1e-5
@@ -50,6 +51,7 @@ logger.add_handler()
 info(f'PyTorch Device: {device}')
 info(f'Number of qudits: {n_qudits}')
 info(f'Number of qubits: {n_qubits}')
+info(f'Weight Decay: {weight_decay:.0e}')
 info(f'Learning Rate: {learning_rate:.0e}')
 info(f'Ground State Energy: {ground_state_energy:.4f}')
 
@@ -132,13 +134,6 @@ class VAE_Model(nn.Module):
         z = mean + std * eps
         return z
 
-    def decoder_expval(self, z):
-        params = F.relu(self.d4[0](z))
-        for i in range(1, len(self.d4)):
-            params = F.relu(self.d4[i](params))
-        params = self.d5(params)
-        return circuit_expval(n_layers, params, Ham)
-
     def decoder(self, z):
         params = F.relu(self.d4[0](z))
         for i in range(1, len(self.d4)):
@@ -158,7 +153,7 @@ model = VAE_Model(n_params, z_dim, h_dim).to(device)
 if checkpoint:
     state_dict = torch.load(f'./mats/{checkpoint}.pt', map_location=device, weights_only=True)
     model.load_state_dict(state_dict)
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
 data_dist = dists.Uniform(0, 1).sample([n_samples, n_params])
 train_data = DataLoader(data_dist, batch_size=batch_size, shuffle=True, drop_last=True)
@@ -183,14 +178,14 @@ for i, batch in enumerate(train_data):
     cos_sim_mean = cos_sims.mean()
 
     coeff = (energy_mean - ground_state_energy).ceil()
-    cos_sim_max_coeff = coeff / 5 * (50 * (cos_sim_max - 0.8)).ceil() if cos_sim_max > 0.8 else 0
+    cos_sim_max_coeff = (75 * (cos_sim_max - 0.8)).ceil() if cos_sim_max > 0.8 else 0
     cos_sim_mean_coeff = coeff / 10 * (10 * cos_sim_mean).ceil() if cos_sim_mean > 0 else 0
     loss = energy_coeff * energy_mean + kl_coeff * kl_div + cos_sim_max_coeff * cos_sim_max + cos_sim_mean_coeff * cos_sim_mean
     loss.backward()
     optimizer.step()
 
     t = time.perf_counter() - start
-    cos_sim_str = f'Cos_Sim: {cos_sim_max_coeff:.1f}*{cos_sim_max:.8f}, {cos_sim_mean_coeff:.1f}*{cos_sim_mean:.8f}, {cos_sims.min():.8f}'
+    cos_sim_str = f'Cos_Sim: {cos_sim_max_coeff:.0f}*{cos_sim_max:.8f}, {cos_sim_mean_coeff:.1f}*{cos_sim_mean:.8f}, {cos_sims.min():.8f}'
     info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, KL: {kl_div:.4e}, {cos_sim_str}, {i+1}/{n_iter}, {t:.2f}')
 
     energy_gap = energy_mean - ground_state_energy
@@ -208,6 +203,7 @@ for i, batch in enumerate(train_data):
             'energy_tol': energy_tol,
             'energy': energy_mean.item(),
             'n_train': f'{i+1}/{n_iter}',
+            'weight_decay': weight_decay,
             'learning_rate': learning_rate,
             'cos_sim_max': cos_sim_max.item(),
             'cos_sim_mean': cos_sim_mean.item()

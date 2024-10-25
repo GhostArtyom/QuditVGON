@@ -170,8 +170,10 @@ z_dim = 50
 n_layers = 2
 n_qudits = 7
 beta = -1 / 3
+energy_tol = 5e-2
 n_qubits = 2 * n_qudits
 ground_state_energy = -2 / 3 * (n_qudits - 1)
+energy_upper = ground_state_energy + energy_tol
 
 dev = qml.device('default.qubit', n_qubits)
 gpu_memory = gpus[0].memoryUtil if (gpus := GPUtil.getGPUs()) else 1
@@ -200,7 +202,6 @@ for name in sorted(os.listdir('./mats')):
             kl_div = load['kl_div'].item()
             batch_size = load['batch_size'].item()
             n_test = 60 if batch_size == 16 else int(input('Input number of test: '))
-            energy_upper = ground_state_energy + (0.05 if energy - ground_state_energy < 1e-2 else 0.1)
             if 'cos_sim' in load:
                 cos_sim = load['cos_sim'].item()
                 cos_sim_str = f'Cos_Sim: {cos_sim:.8f}'

@@ -128,7 +128,7 @@ def testing(n_qudits: int, n_qubits: int, batch_size: int, n_test: int, energy_u
 
     start = time.perf_counter()
     for i, batch in enumerate(test_data):
-        for j in range(1, 10):
+        for j in range(n_test):
             with torch.no_grad():
                 params, _, _ = model(batch.to(device))
             energy = circuit_expval(n_layers, params, Ham)
@@ -137,7 +137,7 @@ def testing(n_qudits: int, n_qubits: int, batch_size: int, n_test: int, energy_u
                 break
             t = time.perf_counter() - start
             batch = dists.Uniform(0, 1).sample([batch_size, n_params])
-            info(f'{energy_str}, Energy Max: {energy.max():.8f} > {energy_upper:.4f}, {j}/{i+1}/{n_test}, {t:.2f}')
+            info(f'{energy_str}, Energy Max: {energy.max():.8f} > {energy_upper:.4f}, {j+1}/{i+1}/{n_test}, {t:.2f}')
 
         states = circuit_state(n_layers, params)
         cos_sims = torch.empty((0), device=device)

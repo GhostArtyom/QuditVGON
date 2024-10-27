@@ -16,12 +16,12 @@ from qutrit_synthesis import NUM_PR, two_qutrit_unitary_synthesis
 
 np.set_printoptions(precision=8, linewidth=200)
 torch.set_printoptions(precision=8, linewidth=200)
-checkpoint = None  # input('Input checkpoint filename: ')
+checkpoint = 'VGON_nqd7_20241027_132240'  # input('Input checkpoint filename: ')
 
 n_layers = 2
 n_qudits = 7
 beta = -1 / 3
-n_iter = 2000
+n_iter = 5000
 batch_size = 16
 weight_decay = 1e-2
 learning_rate = 1e-3
@@ -178,18 +178,18 @@ for i, batch in enumerate(train_data):
     cos_sim_mean = cos_sims.mean()
 
     coeff = (energy_mean - ground_state_energy).ceil()
-    cos_sim_max_coeff = (75 * (cos_sim_max - 0.8)).ceil() if cos_sim_max > 0.8 else 0
+    cos_sim_max_coeff = (40 * (cos_sim_max - 0.8)).ceil() if cos_sim_max > 0.8 else 0
     cos_sim_mean_coeff = coeff / 10 * (10 * cos_sim_mean).ceil() if cos_sim_mean > 0 else 0
-    loss = energy_coeff * energy_mean + kl_coeff * kl_div + cos_sim_max_coeff * cos_sim_max + cos_sim_mean_coeff * cos_sim_mean
+    loss = energy_coeff * energy_mean + kl_coeff * kl_div + cos_sim_max_coeff * cos_sim_max
     loss.backward()
     optimizer.step()
 
     t = time.perf_counter() - start
-    cos_sim_str = f'Cos_Sim: {cos_sim_max_coeff:.0f}*{cos_sim_max:.8f}, {cos_sim_mean_coeff:.1f}*{cos_sim_mean:.8f}, {cos_sims.min():.8f}'
+    cos_sim_str = f'Cos_Sim: {cos_sim_max_coeff:.1f}*{cos_sim_max:.8f}, {cos_sim_mean:.8f}, {cos_sims.min():.8f}'
     info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, KL: {kl_div:.4e}, {cos_sim_str}, {i+1}/{n_iter}, {t:.2f}')
 
     energy_gap = energy_mean - ground_state_energy
-    if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and kl_div < kl_tol):
+    if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and kl_div < kl_tol and cos_sim_max < 0.9):
         time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
         path = f'./mats/VGON_nqd{n_qudits}_{time_str}'
         mat_dict = {

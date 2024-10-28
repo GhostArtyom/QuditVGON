@@ -153,6 +153,7 @@ model = VAE_Model(n_params, z_dim, h_dim).to(device)
 if checkpoint:
     state_dict = torch.load(f'./mats/{checkpoint}.pt', map_location=device, weights_only=True)
     model.load_state_dict(state_dict)
+    info(f'Load: state_dict of {checkpoint}.pt')
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
 data_dist = dists.Uniform(0, 1).sample([n_samples, n_params])
@@ -210,4 +211,4 @@ for i, batch in enumerate(train_data):
         }
         savemat(f'{path}.mat', mat_dict)
         torch.save(model.state_dict(), f'{path}.pt')
-        info(f'Energy Gap: {energy_gap:.4e}, KL: {kl_div:.4e}, {i+1}/{n_iter}, Save: {path}.mat&pt')
+        info(f'Energy Gap: {energy_gap:.4e}, KL: {kl_div:.4e}, Cos_Sim_Max: {cos_sim_max:.8f}, {i+1}/{n_iter}, Save: {path}.mat&pt')

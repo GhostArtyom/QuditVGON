@@ -23,7 +23,7 @@ np.set_printoptions(precision=8, linewidth=200)
 torch.set_printoptions(precision=8, linewidth=200)
 
 
-def testing(n_qudits: int, n_qubits: int, batch_size: int, n_test: int, energy_upper: float):
+def testing(batch_size: int, n_test: int, energy_upper: float):
     n_samples = batch_size * n_test
     n_params = n_layers * (n_qudits - 1) * NUM_PR
     list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
@@ -170,10 +170,8 @@ z_dim = 50
 n_layers = 2
 n_qudits = 7
 beta = -1 / 3
-energy_tol = 5e-2
 n_qubits = 2 * n_qudits
 ground_state_energy = -2 / 3 * (n_qudits - 1)
-energy_upper = ground_state_energy + energy_tol
 
 dev = qml.device('default.qubit', n_qubits)
 gpu_memory = gpus[0].memoryUtil if (gpus := GPUtil.getGPUs()) else 1
@@ -201,6 +199,12 @@ for name in sorted(os.listdir('./mats')):
             energy = load['energy'].item()
             kl_div = load['kl_div'].item()
             batch_size = load['batch_size'].item()
+            if energy > -3.9:
+                energy_upper = -3
+            elif energy > -3.98:
+                energy_upper = -3.9
+            else:
+                energy_upper = -3.95
             n_test = 60 if batch_size == 16 else int(input('Input number of test: '))
             if 'cos_sim' in load:
                 cos_sim = load['cos_sim'].item()
@@ -212,5 +216,5 @@ for name in sorted(os.listdir('./mats')):
             logger.add_handler()
             info(f'Load: {path}.mat without overlaps')
             info(f'Energy: {energy:.8f}, KL: {kl_div:.4e}, {cos_sim_str}, Batch Size: {batch_size}')
-            testing(n_qudits, n_qubits, batch_size, n_test, energy_upper)
+            testing(batch_size, n_test, energy_upper)
             logger.remove_handler()

@@ -16,7 +16,7 @@ from qutrit_synthesis import NUM_PR, two_qutrit_unitary_synthesis
 
 np.set_printoptions(precision=8, linewidth=200)
 torch.set_printoptions(precision=8, linewidth=200)
-checkpoint = 'VGON_nqd7_20241027_132240'  # input('Input checkpoint filename: ')
+checkpoint = None  # input('Input checkpoint filename: ')
 
 n_layers = 2
 n_qudits = 7
@@ -179,7 +179,7 @@ for i, batch in enumerate(train_data):
     cos_sim_mean = cos_sims.mean()
 
     coeff = (energy_mean - ground_state_energy).ceil()
-    cos_sim_max_coeff = (40 * (cos_sim_max - 0.8)).ceil() if cos_sim_max > 0.8 else 0
+    cos_sim_max_coeff = 0.5 * (32 * (cos_sim_max - 0.5)).ceil() if cos_sim_max > 0.5 else 0
     cos_sim_mean_coeff = coeff / 10 * (10 * cos_sim_mean).ceil() if cos_sim_mean > 0 else 0
     loss = energy_coeff * energy_mean + kl_coeff * kl_div + cos_sim_max_coeff * cos_sim_max
     loss.backward()
@@ -190,7 +190,7 @@ for i, batch in enumerate(train_data):
     info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, KL: {kl_div:.4e}, {cos_sim_str}, {i+1}/{n_iter}, {t:.2f}')
 
     energy_gap = energy_mean - ground_state_energy
-    if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and kl_div < kl_tol and cos_sim_max < 0.9):
+    if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and kl_div < kl_tol and cos_sim_max < 0.8):
         time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
         path = f'./mats/VGON_nqd{n_qudits}_{time_str}'
         mat_dict = {

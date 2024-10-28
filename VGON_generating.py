@@ -201,6 +201,8 @@ for name in sorted(os.listdir('./mats')):
             batch_size = load['batch_size'].item()
             if energy > -3.9:
                 energy_upper = -3
+            elif energy > -3.95:
+                energy_upper = -3.85
             elif energy > -3.98:
                 energy_upper = -3.9
             else:

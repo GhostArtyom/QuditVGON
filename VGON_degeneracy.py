@@ -23,7 +23,7 @@ n_qudits = 7
 beta = -1 / 3
 n_iter = 5000
 batch_size = 16
-weight_decay = 1e-2
+weight_decay = 1e-3
 learning_rate = 1e-3
 energy_coeff, kl_coeff = 1, 1
 energy_tol, kl_tol = 1e-2, 1e-5
@@ -179,7 +179,7 @@ for i, batch in enumerate(train_data):
     cos_sim_mean = cos_sims.mean()
 
     coeff = (energy_mean - ground_state_energy).ceil()
-    cos_sim_max_coeff = 0.5 * (32 * (cos_sim_max - 0.5)).ceil() if cos_sim_max > 0.5 else 0
+    cos_sim_max_coeff = 0.5 * (40 * (cos_sim_max - 0.5)).ceil() if cos_sim_max > 0.5 else 0
     cos_sim_mean_coeff = coeff / 10 * (10 * cos_sim_mean).ceil() if cos_sim_mean > 0 else 0
     loss = energy_coeff * energy_mean + kl_coeff * kl_div + cos_sim_max_coeff * cos_sim_max
     loss.backward()

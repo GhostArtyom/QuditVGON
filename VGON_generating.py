@@ -180,7 +180,7 @@ if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 14:
 else:
     device = torch.device('cpu')
 
-log = f'./logs/VGON_nqd{n_qudits}_generating.log'
+log = f'./logs/VGON_nqd{n_qudits}_generating_202410.log'
 logger = Logger(log)
 logger.add_handler()
 
@@ -190,7 +190,7 @@ info(f'Number of qubits: {n_qubits}')
 info(f'Ground State Energy: {ground_state_energy:.4f}')
 
 pattern = f'(VGON_nqd{n_qudits}' + r'_\d{8}_\d{6}).mat'
-for name in sorted(os.listdir('./mats')):
+for name in sorted(os.listdir('./mats'), reverse=True):
     match = re.search(pattern, name)
     if match:
         path = f'./mats/{match.group(1)}'

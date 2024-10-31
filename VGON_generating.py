@@ -180,7 +180,7 @@ if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 14:
 else:
     device = torch.device('cpu')
 
-log = f'./logs/VGON_nqd{n_qudits}_generating_202410.log'
+log = f'./logs/VGON_nqd{n_qudits}_generating_202411.log'
 logger = Logger(log)
 logger.add_handler()
 

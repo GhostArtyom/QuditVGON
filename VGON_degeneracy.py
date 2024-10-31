@@ -44,7 +44,7 @@ if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 14:
 else:
     device = torch.device('cpu')
 
-log = f'./logs/VGON_nqd{n_qudits}_degeneracy.log'
+log = f'./logs/VGON_nqd{n_qudits}_degeneracy_202411.log'
 logger = Logger(log)
 logger.add_handler()
 
@@ -179,14 +179,15 @@ for i, batch in enumerate(train_data):
     cos_sim_mean = cos_sims.mean()
 
     coeff = (energy_mean - ground_state_energy).ceil()
-    cos_sim_max_coeff = 0.5 * (40 * (cos_sim_max - 0.5)).ceil() if cos_sim_max > 0.5 else 0
+    # First let cos_sim_max down to a lower value, then minimize energy?
+    cos_sim_max_coeff = (40 * (cos_sim_max - 0.5)).ceil() if cos_sim_max > 0.5 else 0
     cos_sim_mean_coeff = coeff / 10 * (10 * cos_sim_mean).ceil() if cos_sim_mean > 0 else 0
     loss = energy_coeff * energy_mean + kl_coeff * kl_div + cos_sim_max_coeff * cos_sim_max
     loss.backward()
     optimizer.step()
 
     t = time.perf_counter() - start
-    cos_sim_str = f'Cos_Sim: {cos_sim_max_coeff:.1f}*{cos_sim_max:.8f}, {cos_sim_mean:.8f}, {cos_sims.min():.8f}'
+    cos_sim_str = f'Cos_Sim: {cos_sim_max_coeff:.0f}*{cos_sim_max:.8f}, {cos_sim_mean:.8f}, {cos_sims.min():.8f}'
     info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, KL: {kl_div:.4e}, {cos_sim_str}, {i+1}/{n_iter}, {t:.2f}')
 
     energy_gap = energy_mean - ground_state_energy

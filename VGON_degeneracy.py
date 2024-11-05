@@ -137,8 +137,14 @@ for i, batch in enumerate(train_data):
 
     coeff = (energy_mean - ground_state_energy).ceil()
     # First let cos_sim_max down to a lower value, then minimize energy?
-    cos_sim_max_coeff = 2 * (10 * cos_sim_max).ceil()
-    cos_sim_mean_coeff = coeff / 10 * (10 * cos_sim_mean).ceil() if cos_sim_mean > 0 else 0
+    if cos_sim_max > 0.9:
+        cos_sim_max_coeff = 8
+    elif cos_sim_max > 0.8:
+        cos_sim_max_coeff = 4
+    elif cos_sim_max > 0.7:
+        cos_sim_max_coeff = 2
+    else:
+        cos_sim_max_coeff = 1
     loss = energy_coeff * energy_mean + kl_coeff * kl_div + cos_sim_max_coeff * cos_sim_max
     loss.backward()
     optimizer.step()

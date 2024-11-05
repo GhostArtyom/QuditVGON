@@ -20,7 +20,7 @@ checkpoint = None  # input('Input checkpoint filename: ')
 n_layers = 2
 n_qudits = 7
 beta = -1 / 3
-n_iter = 5000
+n_iter = 2000
 batch_size = 16
 weight_decay = 1e-3
 learning_rate = 1e-3
@@ -137,14 +137,19 @@ for i, batch in enumerate(train_data):
 
     coeff = (energy_mean - ground_state_energy).ceil()
     # First let cos_sim_max down to a lower value, then minimize energy?
-    if cos_sim_max > 0.9:
+    if i < 200:
+        energy_coeff = 0
         cos_sim_max_coeff = 8
-    elif cos_sim_max > 0.8:
-        cos_sim_max_coeff = 4
-    elif cos_sim_max > 0.7:
-        cos_sim_max_coeff = 2
     else:
-        cos_sim_max_coeff = 1
+        energy_coeff = 1
+        if cos_sim_max > 0.9:
+            cos_sim_max_coeff = 8
+        elif cos_sim_max > 0.8:
+            cos_sim_max_coeff = 4
+        elif cos_sim_max > 0.7:
+            cos_sim_max_coeff = 2
+        else:
+            cos_sim_max_coeff = 1
     loss = energy_coeff * energy_mean + kl_coeff * kl_div + cos_sim_max_coeff * cos_sim_max
     loss.backward()
     optimizer.step()
@@ -154,7 +159,7 @@ for i, batch in enumerate(train_data):
     info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, KL: {kl_div:.4e}, {cos_sim_str}, {i+1}/{n_iter}, {t:.2f}')
 
     energy_gap = energy_mean - ground_state_energy
-    if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and kl_div < kl_tol and cos_sim_max < 0.8):
+    if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and cos_sim_max < 0.8):
         time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
         path = f'./mats/VGON_nqd{n_qudits}_{time_str}'
         mat_dict = {

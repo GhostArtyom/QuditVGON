@@ -139,11 +139,11 @@ for i, batch in enumerate(train_data):
     # First let cos_sim_max down to a lower value, then minimize energy?
     if i < 200:
         energy_coeff = 0
-        cos_sim_max_coeff = 8
+        cos_sim_max_coeff = 6
     else:
         energy_coeff = 1
         if cos_sim_max > 0.9:
-            cos_sim_max_coeff = 8
+            cos_sim_max_coeff = 6
         elif cos_sim_max > 0.8:
             cos_sim_max_coeff = 4
         elif cos_sim_max > 0.7:

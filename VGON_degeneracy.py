@@ -141,14 +141,7 @@ for i, batch in enumerate(train_data):
     fidelity_max = fidelities.max()
     fidelity_mean = fidelities.mean()
 
-    # if fidelity_max > 0.99:
-    #     fidelity_max_coeff = 4
-    # elif fidelity_max > 0.9:
-    #     fidelity_max_coeff = 2
-    # else:
-    #     fidelity_max_coeff = 1
-    # loss = energy_coeff * energy_mean + kl_coeff * kl_div + fidelity_max_coeff * fidelity_max
-    fidelity_mean_coeff = 2
+    fidelity_mean_coeff = 1
     loss = energy_coeff * energy_mean + kl_coeff * kl_div + fidelity_mean_coeff * fidelity_mean
     loss.backward()
     optimizer.step()

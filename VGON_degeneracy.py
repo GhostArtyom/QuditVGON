@@ -128,38 +128,38 @@ for i, batch in enumerate(train_data):
     kl_div = -0.5 * (1 + log_var - mean.pow(2) - log_var.exp())
     kl_div = kl_div.mean()
 
+    states = circuit_state(n_layers, params)
     cos_sims = torch.empty((0), device=device)
+    fidelities = torch.empty((0), device=device)
     for ind in combinations(range(batch_size), 2):
         cos_sim = torch.cosine_similarity(params[ind[0], :], params[ind[1], :], dim=0)
         cos_sims = torch.cat((cos_sims, cos_sim.unsqueeze(0)), dim=0)
+        fidelity = qml.math.fidelity_statevector(states[ind[0]], states[ind[1]])
+        fidelities = torch.cat((fidelities, fidelity.unsqueeze(0)), dim=0)
     cos_sim_max = cos_sims.max()
     cos_sim_mean = cos_sims.mean()
+    fidelity_max = fidelities.max()
+    fidelity_mean = fidelities.mean()
 
-    coeff = (energy_mean - ground_state_energy).ceil()
-    # First let cos_sim_max down to a lower value, then minimize energy?
-    if i < 200:
-        energy_coeff = 0
-        cos_sim_max_coeff = 6
-    else:
-        energy_coeff = 1
-        if cos_sim_max > 0.9:
-            cos_sim_max_coeff = 6
-        elif cos_sim_max > 0.8:
-            cos_sim_max_coeff = 4
-        elif cos_sim_max > 0.7:
-            cos_sim_max_coeff = 2
-        else:
-            cos_sim_max_coeff = 1
-    loss = energy_coeff * energy_mean + kl_coeff * kl_div + cos_sim_max_coeff * cos_sim_max
+    # if fidelity_max > 0.99:
+    #     fidelity_max_coeff = 4
+    # elif fidelity_max > 0.9:
+    #     fidelity_max_coeff = 2
+    # else:
+    #     fidelity_max_coeff = 1
+    # loss = energy_coeff * energy_mean + kl_coeff * kl_div + fidelity_max_coeff * fidelity_max
+    fidelity_mean_coeff = 2
+    loss = energy_coeff * energy_mean + kl_coeff * kl_div + fidelity_mean_coeff * fidelity_mean
     loss.backward()
     optimizer.step()
 
     t = time.perf_counter() - start
-    cos_sim_str = f'Cos_Sim: {cos_sim_max_coeff:.0f}*{cos_sim_max:.8f}, {cos_sim_mean:.8f}, {cos_sims.min():.8f}'
-    info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, KL: {kl_div:.4e}, {cos_sim_str}, {i+1}/{n_iter}, {t:.2f}')
+    fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}, {fidelities.min():.8f}'
+    cos_sim_str = f'Cos_Sim: {cos_sim_max:.8f}, {cos_sim_mean:.8f}, {cos_sims.min():.8f}'
+    info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, KL: {kl_div:.4e}, {fidelity_str}, {cos_sim_str}, {i+1}/{n_iter}, {t:.2f}')
 
     energy_gap = energy_mean - ground_state_energy
-    if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and cos_sim_max < 0.8):
+    if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and fidelity_max < 0.5):
         time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
         path = f'./mats/VGON_nqd{n_qudits}_{time_str}'
         mat_dict = {
@@ -176,7 +176,9 @@ for i, batch in enumerate(train_data):
             'weight_decay': weight_decay,
             'learning_rate': learning_rate,
             'cos_sim_max': cos_sim_max.item(),
-            'cos_sim_mean': cos_sim_mean.item()
+            'cos_sim_mean': cos_sim_mean.item(),
+            'fidelity_max': fidelity_max.item(),
+            'fidelity_mean': fidelity_mean.item()
         }
         savemat(f'{path}.mat', mat_dict)
         torch.save(model.state_dict(), f'{path}.pt')

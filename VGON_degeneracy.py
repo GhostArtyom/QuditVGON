@@ -15,7 +15,7 @@ from qutrit_synthesis import NUM_PR, two_qutrit_unitary_synthesis
 
 np.set_printoptions(precision=8, linewidth=200)
 torch.set_printoptions(precision=8, linewidth=200)
-checkpoint = None  # input('Input checkpoint filename: ')
+checkpoint = 'VGON_nqd7_20241108_203738'  # input('Input checkpoint filename: ')
 
 n_layers = 2
 n_qudits = 7

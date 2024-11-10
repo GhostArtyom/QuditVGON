@@ -162,11 +162,11 @@ for name in sorted(os.listdir('./mats'), reverse=True):
             if energy > -3.9:
                 energy_upper = -3
             elif energy > -3.95:
-                energy_upper = -3.85
-            elif energy > -3.98:
                 energy_upper = -3.9
-            else:
+            elif energy > -3.99:
                 energy_upper = -3.95
+            else:
+                energy_upper = -3.98
             n_test = 60 if batch_size == 16 else int(input('Input number of test: '))
             if 'cos_sim' in load:
                 cos_sim = load['cos_sim'].item()

@@ -15,17 +15,15 @@ from qutrit_synthesis import NUM_PR, two_qutrit_unitary_synthesis
 
 np.set_printoptions(precision=8, linewidth=200)
 torch.set_printoptions(precision=8, linewidth=200)
-checkpoint = 'VGON_nqd7_20241108_203738'  # input('Input checkpoint filename: ')
+checkpoint = None  # input('Input checkpoint filename: ')
 
 n_layers = 2
 n_qudits = 7
 beta = -1 / 3
-n_iter = 2000
+n_iter = 4000
 batch_size = 16
 weight_decay = 1e-3
 learning_rate = 1e-3
-energy_coeff, kl_coeff = 1, 1
-energy_tol, kl_tol = 1e-2, 1e-5
 
 n_qubits = 2 * n_qudits
 n_samples = batch_size * n_iter
@@ -141,7 +139,7 @@ for i, batch in enumerate(train_data):
     fidelity_max = fidelities.max()
     fidelity_mean = fidelities.mean()
 
-    fidelity_mean_coeff = 1
+    energy_coeff, kl_coeff, fidelity_mean_coeff = 1, 1, 1
     loss = energy_coeff * energy_mean + kl_coeff * kl_div + fidelity_mean_coeff * fidelity_mean
     loss.backward()
     optimizer.step()
@@ -152,7 +150,8 @@ for i, batch in enumerate(train_data):
     info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, KL: {kl_div:.4e}, {fidelity_str}, {cos_sim_str}, {i+1}/{n_iter}, {t:.2f}')
 
     energy_gap = energy_mean - ground_state_energy
-    if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and fidelity_max < 0.5):
+    energy_tol, kl_tol, fidelity_tol = 1e-2, 1e-5, 0.98
+    if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and fidelity_max < fidelity_tol):
         time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
         path = f'./mats/VGON_nqd{n_qudits}_{time_str}'
         mat_dict = {

@@ -8,39 +8,37 @@ class VAEModel(nn.Module):
 
     def __init__(self, n_params: int, z_dim: int, h_dim: List[int]):
         super(VAEModel, self).__init__()
-        # encoder
-        self.e1 = nn.ModuleList([nn.Linear(n_params, h_dim[0], bias=True)])
-        self.e1 += [nn.Linear(h_dim[i - 1], h_dim[i], bias=True) for i in range(1, len(h_dim))]
-        self.e2 = nn.Linear(h_dim[-1], z_dim, bias=True)
-        self.e3 = nn.Linear(h_dim[-1], z_dim, bias=True)
-        # decoder
-        self.d4 = nn.ModuleList([nn.Linear(z_dim, h_dim[-1], bias=True)])
-        self.d4 += [nn.Linear(h_dim[-i + 1], h_dim[-i], bias=True) for i in range(2, len(h_dim) + 1)]
-        self.d5 = nn.Linear(h_dim[0], n_params, bias=True)
+        self.encoder = nn.ModuleList([nn.Linear(n_params, h_dim[0], bias=True)])
+        self.encoder += [nn.Linear(h_dim[i - 1], h_dim[i], bias=True) for i in range(1, len(h_dim))]
+        self.encoder_mean = nn.Linear(h_dim[-1], z_dim, bias=True)
+        self.encoder_log_var = nn.Linear(h_dim[-1], z_dim, bias=True)
+        self.decoder = nn.ModuleList([nn.Linear(z_dim, h_dim[-1], bias=True)])
+        self.decoder += [nn.Linear(h_dim[1 - i], h_dim[-i], bias=True) for i in range(2, len(h_dim) + 1)]
+        self.decoder += [nn.Linear(h_dim[0], n_params, bias=True)]
 
-    def encoder(self, x):
-        h = F.relu(self.e1[0](x))
-        for i in range(1, len(self.e1)):
-            h = F.relu(self.e1[i](h))
-        mean = self.e2(h)
-        log_var = self.e3(h)
+    def encode(self, x):
+        h = F.relu(self.encoder[0](x))
+        for i in range(1, len(self.encoder)):
+            h = F.relu(self.encoder[i](h))
+        mean = self.encoder_mean(h)
+        log_var = self.encoder_log_var(h)
         return mean, log_var
 
     def reparameterize(self, mean, log_var):
         eps = torch.randn_like(log_var)
-        std = torch.exp(log_var).pow(0.5)
-        z = mean + std * eps
+        std = torch.exp(log_var).sqrt()
+        z = mean + eps * std
         return z
 
-    def decoder(self, z):
-        params = F.relu(self.d4[0](z))
-        for i in range(1, len(self.d4)):
-            params = F.relu(self.d4[i](params))
-        params = self.d5(params)
+    def decode(self, z):
+        h = F.relu(self.decoder[0](z))
+        for i in range(1, len(self.decoder) - 1):
+            h = F.relu(self.decoder[i](h))
+        params = self.decoder[-1](h)
         return params
 
     def forward(self, x):
-        mean, log_var = self.encoder(x)
+        mean, log_var = self.encode(x)
         z = self.reparameterize(mean, log_var)
-        params = self.decoder(z)
+        params = self.decode(z)
         return params, mean, log_var

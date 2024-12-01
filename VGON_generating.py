@@ -22,7 +22,7 @@ np.set_printoptions(precision=8, linewidth=200)
 torch.set_printoptions(precision=8, linewidth=200)
 
 
-def testing(batch_size: int, n_test: int, energy_upper: float):
+def testing(batch_size: int, n_test: int, energy_upper: float, is_counting: False):
     n_samples = batch_size * n_test
     n_params = n_layers * (n_qudits - 1) * NUM_PR
     list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
@@ -84,18 +84,27 @@ def testing(batch_size: int, n_test: int, energy_upper: float):
     overlaps = np.empty([0, ED_states.shape[0]])
     Ham = Hamiltonian(n_qudits, beta)
 
+    count, count_str = 0, ''
     start = time.perf_counter()
     for i, batch in enumerate(test_data):
-        for j in range(n_test):
+        if is_counting:
             with torch.no_grad():
                 params, _, _ = model(batch.to(device))
-            energy = circuit_expval(n_layers, params, Ham)
-            energy_str = f'Energy: {energy.max():.8f}, {energy.mean():.8f}, {energy.min():.8f}'
-            if energy.max() < energy_upper:
-                break
-            t = time.perf_counter() - start
-            batch = dists.Uniform(0, 1).sample([batch_size, n_params])
-            info(f'{energy_str}, Energy Max: {energy.max():.8f} > {energy_upper:.4f}, {j+1}/{i+1}/{n_test}, {t:.2f}')
+                energy = circuit_expval(n_layers, params, Ham)
+                energy_str = f'Energy: {energy.max():.8f}, {energy.mean():.8f}, {energy.min():.8f}'
+                count += (energy < energy_upper).sum().item()
+                count_str = f'{count}/{(i+1)*batch_size}, '
+        else:
+            for j in range(n_test):
+                with torch.no_grad():
+                    params, _, _ = model(batch.to(device))
+                energy = circuit_expval(n_layers, params, Ham)
+                energy_str = f'Energy: {energy.max():.8f}, {energy.mean():.8f}, {energy.min():.8f}'
+                if energy.max() < energy_upper:
+                    break
+                t = time.perf_counter() - start
+                batch = dists.Uniform(0, 1).sample([batch_size, n_params])
+                info(f'{energy_str}, Energy Max: {energy.max():.8f} > {energy_upper:.4f}, {j+1}/{i+1}/{n_test}, {t:.2f}')
 
         states = circuit_state(n_layers, params)
         cos_sims = torch.empty((0), device=device)
@@ -116,12 +125,13 @@ def testing(batch_size: int, n_test: int, energy_upper: float):
         t = time.perf_counter() - start
         cos_sim_str = f'Cos_Sim: {cos_sims.max():.8f}, {cos_sims.mean():.8f}, {cos_sims.min():.8f}'
         fidelity_str = f'Fidelity: {fidelities.max():.8f}, {fidelities.mean():.8f}, {fidelities.min():.8f}'
-        info(f'{energy_str}, {cos_sim_str}, {fidelity_str}, {i+1}/{n_test}, {t:.2f}')
+        info(f'{energy_str}, {fidelity_str}, {cos_sim_str}, {count_str}{i+1}/{n_test}, {t:.2f}')
         if rank < batch_size:
             info(f'Rank: {rank} < Batch Size: {batch_size}')
 
-    updatemat(f'{path}.mat', {'overlaps': overlaps})
-    info(f'Save: {path}.mat with overlaps')
+    if not is_counting:
+        updatemat(f'{path}.mat', {'overlaps': overlaps})
+        info(f'Save: {path}.mat with overlaps')
 
 
 z_dim = 50
@@ -138,7 +148,7 @@ if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 14:
 else:
     device = torch.device('cpu')
 
-log = f'./logs/VGON_nqd{n_qudits}_generating_202411.log'
+log = f'./logs/VGON_nqd{n_qudits}_generating_202412.log'
 logger = Logger(log)
 logger.add_handler()
 
@@ -182,5 +192,5 @@ for name in sorted(os.listdir('./mats'), reverse=True):
             n_train = load['n_train'].item()
             info(f'Load: {path}.mat, {n_train}')
             info(f'Energy: {energy:.8f}, KL: {kl_div:.4e}, {fidelity_str}, {cos_sim_str}, Batch Size: {batch_size}')
-            testing(batch_size, n_test, energy_upper)
+            testing(batch_size, n_test, energy_upper, is_counting=False)
             logger.remove_handler()

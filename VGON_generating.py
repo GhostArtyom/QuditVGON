@@ -72,8 +72,6 @@ def testing(batch_size: int, n_test: int, energy_upper: float):
         qml.layer(qutrit_symmetric_ansatz, n_layers, params)
         return qml.expval(Ham)
 
-
-
     state_dict = torch.load(f'{path}.pt', map_location=device, weights_only=True)
     model = VAEModel(n_params, z_dim, h_dim).to(device)
     model.load_state_dict(state_dict)
@@ -155,8 +153,9 @@ for name in sorted(os.listdir('./mats'), reverse=True):
     if match:
         path = f'./mats/{match.group(1)}'
         load = loadmat(f'{path}.mat')
-        if 'overlaps' not in load:
-            energy = load['energy'].item()
+        energy = load['energy'].item()
+        # if 'overlaps' not in load:
+        if 'fidelity_max' in load.keys() and energy < -3.99:
             kl_div = load['kl_div'].item()
             batch_size = load['batch_size'].item()
             if energy > -3.9:
@@ -167,7 +166,7 @@ for name in sorted(os.listdir('./mats'), reverse=True):
                 energy_upper = -3.95
             else:
                 energy_upper = -3.98
-            n_test = 60 if batch_size == 16 else int(input('Input number of test: '))
+            n_test = 100 if batch_size == 16 else int(input('Input number of test: '))
             if 'cos_sim' in load:
                 cos_sim = load['cos_sim'].item()
                 cos_sim_str = f'Cos_Sim: {cos_sim:.8f}'
@@ -175,8 +174,13 @@ for name in sorted(os.listdir('./mats'), reverse=True):
                 cos_sim_max = load['cos_sim_max'].item()
                 cos_sim_mean = load['cos_sim_mean'].item()
                 cos_sim_str = f'Cos_Sim: {cos_sim_max:.8f}, {cos_sim_mean:.8f}'
+                if 'fidelity_max' in load and 'fidelity_mean' in load:
+                    fidelity_max = load['fidelity_max'].item()
+                    fidelity_mean = load['fidelity_mean'].item()
+                    fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}'
             logger.add_handler()
-            info(f'Load: {path}.mat without overlaps')
-            info(f'Energy: {energy:.8f}, KL: {kl_div:.4e}, {cos_sim_str}, Batch Size: {batch_size}')
+            n_train = load['n_train'].item()
+            info(f'Load: {path}.mat, {n_train}')
+            info(f'Energy: {energy:.8f}, KL: {kl_div:.4e}, {fidelity_str}, {cos_sim_str}, Batch Size: {batch_size}')
             testing(batch_size, n_test, energy_upper)
             logger.remove_handler()

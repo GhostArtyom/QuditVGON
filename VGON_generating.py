@@ -92,7 +92,7 @@ def testing(batch_size: int, n_test: int, energy_upper: float, is_counting: Fals
                 params, _, _ = model(batch.to(device))
                 energy = circuit_expval(n_layers, params, Ham)
                 energy_str = f'Energy: {energy.max():.8f}, {energy.mean():.8f}, {energy.min():.8f}'
-                count += (energy < energy_upper).sum().item()
+                count += (energy < -3.99).sum().item()
                 count_str = f'{count}/{(i+1)*batch_size}, '
         else:
             for j in range(n_test):
@@ -163,31 +163,31 @@ for name in sorted(os.listdir('./mats'), reverse=True):
     if match:
         path = f'./mats/{match.group(1)}'
         load = loadmat(f'{path}.mat')
-        energy = load['energy'].item()
         # if 'overlaps' not in load:
-        if 'fidelity_max' in load.keys() and energy < -3.99:
-            kl_div = load['kl_div'].item()
-            batch_size = load['batch_size'].item()
-            if energy > -3.9:
-                energy_upper = -3
-            elif energy > -3.95:
-                energy_upper = -3.9
-            elif energy > -3.99:
-                energy_upper = -3.95
-            else:
-                energy_upper = -3.98
-            n_test = 100 if batch_size == 16 else int(input('Input number of test: '))
-            if 'cos_sim' in load:
-                cos_sim = load['cos_sim'].item()
-                cos_sim_str = f'Cos_Sim: {cos_sim:.8f}'
-            elif 'cos_sim_max' in load and 'cos_sim_mean' in load:
-                cos_sim_max = load['cos_sim_max'].item()
-                cos_sim_mean = load['cos_sim_mean'].item()
-                cos_sim_str = f'Cos_Sim: {cos_sim_max:.8f}, {cos_sim_mean:.8f}'
-                if 'fidelity_max' in load and 'fidelity_mean' in load:
-                    fidelity_max = load['fidelity_max'].item()
-                    fidelity_mean = load['fidelity_mean'].item()
-                    fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}'
+        energy = load['energy'].item()
+        kl_div = load['kl_div'].item()
+        batch_size = load['batch_size'].item()
+        if energy > -3.9:
+            energy_upper = -3
+        elif energy > -3.95:
+            energy_upper = -3.9
+        elif energy > -3.99:
+            energy_upper = -3.95
+        else:
+            energy_upper = -3.98
+        n_test = 100 if batch_size == 16 else int(input('Input number of test: '))
+        if 'cos_sim' in load:
+            cos_sim = load['cos_sim'].item()
+            cos_sim_str = f'Cos_Sim: {cos_sim:.8f}'
+        elif 'cos_sim_max' in load and 'cos_sim_mean' in load:
+            cos_sim_max = load['cos_sim_max'].item()
+            cos_sim_mean = load['cos_sim_mean'].item()
+            cos_sim_str = f'Cos_Sim: {cos_sim_max:.8f}, {cos_sim_mean:.8f}'
+            if 'fidelity_max' in load and 'fidelity_mean' in load:
+                fidelity_max = load['fidelity_max'].item()
+                fidelity_mean = load['fidelity_mean'].item()
+                fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}'
+        if 'fidelity_max' in load.keys() and energy < -3.99 and fidelity_max < 0.98:
             logger.add_handler()
             n_train = load['n_train'].item()
             info(f'Load: {path}.mat, {n_train}')

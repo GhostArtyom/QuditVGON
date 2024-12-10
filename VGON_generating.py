@@ -12,7 +12,6 @@ from scipy.io import loadmat
 from VAE_model import VAEModel
 from itertools import combinations
 import torch.distributions as dists
-from numpy.linalg import matrix_rank
 from utils import fidelity, updatemat
 from torch.utils.data import DataLoader
 from qudit_mapping import symmetric_decoding
@@ -22,7 +21,7 @@ np.set_printoptions(precision=8, linewidth=200)
 torch.set_printoptions(precision=8, linewidth=200)
 
 
-def testing(batch_size: int, n_test: int, energy_upper: float, is_counting: False):
+def testing(batch_size: int, n_test: int, energy_upper: float):
     n_samples = batch_size * n_test
     n_params = n_layers * (n_qudits - 1) * NUM_PR
     list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
@@ -87,24 +86,16 @@ def testing(batch_size: int, n_test: int, energy_upper: float, is_counting: Fals
     count, count_str = 0, ''
     start = time.perf_counter()
     for i, batch in enumerate(test_data):
-        if is_counting:
+        for _ in range(n_test):
             with torch.no_grad():
                 params, _, _ = model(batch.to(device))
-                energy = circuit_expval(n_layers, params, Ham)
-                energy_str = f'Energy: {energy.max():.8f}, {energy.mean():.8f}, {energy.min():.8f}'
-                count += (energy < -3.99).sum().item()
-                count_str = f'{count}/{(i+1)*batch_size}, '
-        else:
-            for j in range(n_test):
-                with torch.no_grad():
-                    params, _, _ = model(batch.to(device))
-                energy = circuit_expval(n_layers, params, Ham)
-                energy_str = f'Energy: {energy.max():.8f}, {energy.mean():.8f}, {energy.min():.8f}'
-                if energy.max() < energy_upper:
-                    break
-                t = time.perf_counter() - start
-                batch = dists.Uniform(0, 1).sample([batch_size, n_params])
-                info(f'{energy_str}, Energy Max: {energy.max():.8f} > {energy_upper:.4f}, {j+1}/{i+1}/{n_test}, {t:.2f}')
+            energy = circuit_expval(n_layers, params, Ham)
+            energy_str = f'Energy: {energy.max():.8f}, {energy.mean():.8f}, {energy.min():.8f}'
+            energy_ind = torch.where(energy < energy_upper)[0]
+            if len(energy_ind) > 0:
+                count += len(energy_ind)
+                count_str = f'{count}/{(i+1)*batch_size}'
+                break
 
         states = circuit_state(n_layers, params)
         cos_sims = torch.empty((0), device=device)
@@ -115,8 +106,7 @@ def testing(batch_size: int, n_test: int, energy_upper: float, is_counting: Fals
             fidelity_state = qml.math.fidelity_statevector(states[ind[0]], states[ind[1]])
             fidelities = torch.cat((fidelities, fidelity_state.unsqueeze(0)), dim=0)
 
-        states = states.detach().cpu().numpy()
-        rank = matrix_rank(states)
+        states = states[energy_ind].detach().cpu().numpy()
         for state in states:
             decoded_state = symmetric_decoding(state, n_qudits)
             overlap = [fidelity(decoded_state, ED_state) for ED_state in ED_states]
@@ -125,13 +115,10 @@ def testing(batch_size: int, n_test: int, energy_upper: float, is_counting: Fals
         t = time.perf_counter() - start
         cos_sim_str = f'Cos_Sim: {cos_sims.max():.8f}, {cos_sims.mean():.8f}, {cos_sims.min():.8f}'
         fidelity_str = f'Fidelity: {fidelities.max():.8f}, {fidelities.mean():.8f}, {fidelities.min():.8f}'
-        info(f'{energy_str}, {fidelity_str}, {cos_sim_str}, {count_str}{i+1}/{n_test}, {t:.2f}')
-        if rank < batch_size:
-            info(f'Rank: {rank} < Batch Size: {batch_size}')
+        info(f'{energy_str}, {fidelity_str}, {cos_sim_str}, {count_str}, {i+1}/{n_test}, {t:.2f}')
 
-    if not is_counting:
-        updatemat(f'{path}.mat', {'overlaps': overlaps})
-        info(f'Save: {path}.mat with overlaps')
+    updatemat(f'{path}.mat', {'count': count_str, 'overlaps': overlaps})
+    info(f'Save: {path}.mat with count and overlaps')
 
 
 z_dim = 50
@@ -163,34 +150,34 @@ for name in sorted(os.listdir('./mats'), reverse=True):
     if match:
         path = f'./mats/{match.group(1)}'
         load = loadmat(f'{path}.mat')
-        # if 'overlaps' not in load:
-        energy = load['energy'].item()
-        kl_div = load['kl_div'].item()
-        batch_size = load['batch_size'].item()
-        if energy > -3.9:
-            energy_upper = -3
-        elif energy > -3.95:
-            energy_upper = -3.9
-        elif energy > -3.99:
-            energy_upper = -3.95
-        else:
-            energy_upper = -3.98
-        n_test = 100 if batch_size == 16 else int(input('Input number of test: '))
-        if 'cos_sim' in load:
-            cos_sim = load['cos_sim'].item()
-            cos_sim_str = f'Cos_Sim: {cos_sim:.8f}'
-        elif 'cos_sim_max' in load and 'cos_sim_mean' in load:
-            cos_sim_max = load['cos_sim_max'].item()
-            cos_sim_mean = load['cos_sim_mean'].item()
-            cos_sim_str = f'Cos_Sim: {cos_sim_max:.8f}, {cos_sim_mean:.8f}'
-            if 'fidelity_max' in load and 'fidelity_mean' in load:
-                fidelity_max = load['fidelity_max'].item()
-                fidelity_mean = load['fidelity_mean'].item()
-                fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}'
-        if 'fidelity_max' in load.keys() and energy < -3.99 and fidelity_max < 0.98:
+        if 'overlaps' not in load:
+            energy = load['energy'].item()
+            kl_div = load['kl_div'].item()
+            batch_size = load['batch_size'].item()
+            if energy > -3.9:
+                energy_upper = -3
+            elif energy > -3.95:
+                energy_upper = -3.9
+            elif energy > -3.99:
+                energy_upper = -3.95
+            else:
+                energy_upper = -3.99
+            n_test = 100 if batch_size == 16 else int(input('Input number of test: '))
+            if 'cos_sim' in load:
+                cos_sim = load['cos_sim'].item()
+                cos_sim_str = f'Cos_Sim: {cos_sim:.8f}'
+            elif 'cos_sim_max' in load and 'cos_sim_mean' in load:
+                cos_sim_max = load['cos_sim_max'].item()
+                cos_sim_mean = load['cos_sim_mean'].item()
+                cos_sim_str = f'Cos_Sim: {cos_sim_max:.8f}, {cos_sim_mean:.8f}'
+                if 'fidelity_max' in load and 'fidelity_mean' in load:
+                    fidelity_max = load['fidelity_max'].item()
+                    fidelity_mean = load['fidelity_mean'].item()
+                    fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}'
+            # if 'fidelity_max' in load.keys() and energy < -3.99 and fidelity_max < 0.98:
             logger.add_handler()
             n_train = load['n_train'].item()
             info(f'Load: {path}.mat, {n_train}')
-            info(f'Energy: {energy:.8f}, KL: {kl_div:.4e}, {fidelity_str}, {cos_sim_str}, Batch Size: {batch_size}')
-            testing(batch_size, n_test, energy_upper, is_counting=False)
+            info(f'Energy: {energy:.8f}, Energy Upper: {energy_upper:.2f}, KL: {kl_div:.4e}, {fidelity_str}, {cos_sim_str}, Batch Size: {batch_size}')
+            testing(batch_size, n_test, energy_upper)
             logger.remove_handler()

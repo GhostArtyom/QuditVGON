@@ -10,7 +10,6 @@ from logging import info
 from logger import Logger
 from scipy.io import loadmat
 from VAE_model import VAEModel
-from itertools import combinations
 import torch.distributions as dists
 from utils import fidelity, updatemat
 from torch.utils.data import DataLoader
@@ -80,32 +79,27 @@ def testing(batch_size: int, n_test: int, energy_upper: float):
     test_data = DataLoader(data_dist, batch_size=batch_size, shuffle=True, drop_last=True)
 
     ED_states = loadmat('./mats/ED_degeneracy.mat')[f'nqd{n_qudits}'][0, 1].T
+    ED_states[np.abs(ED_states) < 1e-15] = 0
     overlaps = np.empty([0, ED_states.shape[0]])
     Ham = Hamiltonian(n_qudits, beta)
 
     count, count_str = 0, ''
     start = time.perf_counter()
     for i, batch in enumerate(test_data):
-        for _ in range(n_test):
+        for j in range(n_test):
             with torch.no_grad():
                 params, _, _ = model(batch.to(device))
             energy = circuit_expval(n_layers, params, Ham)
             energy_str = f'Energy: {energy.max():.8f}, {energy.mean():.8f}, {energy.min():.8f}'
             energy_ind = torch.where(energy < energy_upper)[0]
-            if len(energy_ind) > 0:
+            if len(energy_ind) >= 0.75 * batch_size:
                 count += len(energy_ind)
                 count_str = f'{count}/{(i+1)*batch_size}'
                 break
+            t = time.perf_counter() - start
+            info(f'{energy_str}, {len(energy_ind)}<{0.75*batch_size:.0f}, {j+1}/{i+1}/{n_test}, {t:.2f}')
 
         states = circuit_state(n_layers, params)
-        cos_sims = torch.empty((0), device=device)
-        fidelities = torch.empty((0), device=device)
-        for ind in combinations(range(batch_size), 2):
-            cos_sim = torch.cosine_similarity(params[ind[0], :], params[ind[1], :], dim=0)
-            cos_sims = torch.cat((cos_sims, cos_sim.unsqueeze(0)), dim=0)
-            fidelity_state = qml.math.fidelity_statevector(states[ind[0]], states[ind[1]])
-            fidelities = torch.cat((fidelities, fidelity_state.unsqueeze(0)), dim=0)
-
         states = states[energy_ind].detach().cpu().numpy()
         for state in states:
             decoded_state = symmetric_decoding(state, n_qudits)
@@ -113,9 +107,7 @@ def testing(batch_size: int, n_test: int, energy_upper: float):
             overlaps = np.vstack((overlaps, overlap))
 
         t = time.perf_counter() - start
-        cos_sim_str = f'Cos_Sim: {cos_sims.max():.8f}, {cos_sims.mean():.8f}, {cos_sims.min():.8f}'
-        fidelity_str = f'Fidelity: {fidelities.max():.8f}, {fidelities.mean():.8f}, {fidelities.min():.8f}'
-        info(f'{energy_str}, {fidelity_str}, {cos_sim_str}, {count_str}, {i+1}/{n_test}, {t:.2f}')
+        info(f'{energy_str}, {count_str}, {i+1}/{n_test}, {t:.2f}')
 
     updatemat(f'{path}.mat', {'count': count_str, 'overlaps': overlaps})
     info(f'Save: {path}.mat with count and overlaps')
@@ -150,34 +142,27 @@ for name in sorted(os.listdir('./mats'), reverse=True):
     if match:
         path = f'./mats/{match.group(1)}'
         load = loadmat(f'{path}.mat')
-        if 'overlaps' not in load:
-            energy = load['energy'].item()
-            kl_div = load['kl_div'].item()
-            batch_size = load['batch_size'].item()
-            if energy > -3.9:
-                energy_upper = -3
-            elif energy > -3.95:
-                energy_upper = -3.9
-            elif energy > -3.99:
-                energy_upper = -3.95
-            else:
-                energy_upper = -3.99
-            n_test = 100 if batch_size == 16 else int(input('Input number of test: '))
-            if 'cos_sim' in load:
-                cos_sim = load['cos_sim'].item()
-                cos_sim_str = f'Cos_Sim: {cos_sim:.8f}'
-            elif 'cos_sim_max' in load and 'cos_sim_mean' in load:
-                cos_sim_max = load['cos_sim_max'].item()
-                cos_sim_mean = load['cos_sim_mean'].item()
-                cos_sim_str = f'Cos_Sim: {cos_sim_max:.8f}, {cos_sim_mean:.8f}'
-                if 'fidelity_max' in load and 'fidelity_mean' in load:
-                    fidelity_max = load['fidelity_max'].item()
-                    fidelity_mean = load['fidelity_mean'].item()
-                    fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}'
-            # if 'fidelity_max' in load.keys() and energy < -3.99 and fidelity_max < 0.98:
+        # if 'overlaps' not in load:
+        energy = load['energy'].item()
+        kl_div = load['kl_div'].item()
+        batch_size = load['batch_size'].item()
+        if energy > -3.9:
+            energy_upper = -3
+        elif energy > -3.95:
+            energy_upper = -3.9
+        elif energy > -3.99:
+            energy_upper = -3.95
+        else:
+            energy_upper = -3.99
+        n_test = 100 if batch_size == 16 else int(input('Input number of test: '))
+        if 'fidelity_max' in load and 'fidelity_mean' in load:
+            fidelity_max = load['fidelity_max'].item()
+            fidelity_mean = load['fidelity_mean'].item()
+            fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}'
+        if energy < -3.99 and fidelity_max < 0.98:
             logger.add_handler()
             n_train = load['n_train'].item()
             info(f'Load: {path}.mat, {n_train}')
-            info(f'Energy: {energy:.8f}, Energy Upper: {energy_upper:.2f}, KL: {kl_div:.4e}, {fidelity_str}, {cos_sim_str}, Batch Size: {batch_size}')
+            info(f'Energy: {energy:.8f}, Energy Upper: {energy_upper:.2f}, KL: {kl_div:.4e}, {fidelity_str}')
             testing(batch_size, n_test, energy_upper)
             logger.remove_handler()

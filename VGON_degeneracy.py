@@ -22,7 +22,7 @@ n_qudits = 7
 beta = -1 / 3
 n_iter = 4000
 batch_size = 16
-weight_decay = 1e-2
+weight_decay = 1e-4
 learning_rate = 1e-3
 
 n_qubits = 2 * n_qudits

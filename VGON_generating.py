@@ -142,27 +142,27 @@ for name in sorted(os.listdir('./mats'), reverse=True):
     if match:
         path = f'./mats/{match.group(1)}'
         load = loadmat(f'{path}.mat')
-        # if 'overlaps' not in load:
-        energy = load['energy'].item()
-        kl_div = load['kl_div'].item()
-        batch_size = load['batch_size'].item()
-        if energy > -3.9:
-            energy_upper = -3
-        elif energy > -3.95:
-            energy_upper = -3.9
-        elif energy > -3.99:
-            energy_upper = -3.95
-        else:
-            energy_upper = -3.99
-        n_test = 100 if batch_size == 16 else int(input('Input number of test: '))
-        if 'fidelity_max' in load and 'fidelity_mean' in load:
-            fidelity_max = load['fidelity_max'].item()
-            fidelity_mean = load['fidelity_mean'].item()
-            fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}'
-        if energy < -3.99 and fidelity_max < 0.98:
-            logger.add_handler()
-            n_train = load['n_train'].item()
-            info(f'Load: {path}.mat, {n_train}')
-            info(f'Energy: {energy:.8f}, Energy Upper: {energy_upper:.2f}, KL: {kl_div:.4e}, {fidelity_str}')
-            testing(batch_size, n_test, energy_upper)
-            logger.remove_handler()
+        if 'overlaps' not in load:
+            energy = load['energy'].item()
+            kl_div = load['kl_div'].item()
+            batch_size = load['batch_size'].item()
+            if energy > -3.9:
+                energy_upper = -3
+            elif energy > -3.95:
+                energy_upper = -3.9
+            elif energy > -3.99:
+                energy_upper = -3.95
+            else:
+                energy_upper = -3.99
+            n_test = 100 if batch_size == 16 else int(input('Input number of test: '))
+            if 'fidelity_max' in load and 'fidelity_mean' in load:
+                fidelity_max = load['fidelity_max'].item()
+                fidelity_mean = load['fidelity_mean'].item()
+                fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}'
+            # if energy < -3.99 and fidelity_max < 0.98:
+                logger.add_handler()
+                n_train = load['n_train'].item()
+                info(f'Load: {path}.mat, {n_train}')
+                info(f'Energy: {energy:.8f}, Energy Upper: {energy_upper:.2f}, KL: {kl_div:.4e}, {fidelity_str}')
+                testing(batch_size, n_test, energy_upper)
+                logger.remove_handler()

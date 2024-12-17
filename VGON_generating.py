@@ -5,11 +5,11 @@ import torch
 import GPUtil
 import numpy as np
 import pennylane as qml
-from typing import List
 from logging import info
 from logger import Logger
 from scipy.io import loadmat
 from VAE_model import VAEModel
+from Hamiltonian import AKLT_model
 import torch.distributions as dists
 from utils import fidelity, updatemat
 from torch.utils.data import DataLoader
@@ -25,33 +25,6 @@ def testing(batch_size: int, n_test: int, energy_upper: float):
     n_params = n_layers * (n_qudits - 1) * NUM_PR
     list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
     h_dim = np.power(2, list_z).astype(int)
-
-    def spin_operator(obj: List[int]):
-        if len(obj) != 2:
-            raise ValueError(f'The number of object qubits {len(obj)} should be 2')
-        sx = qml.X(obj[0]) + qml.X(obj[1])
-        sy = qml.Y(obj[0]) + qml.Y(obj[1])
-        sz = qml.Z(obj[0]) + qml.Z(obj[1])
-        return sx, sy, sz
-
-    def spin_operator2(obj: List[int]):
-        if len(obj) != 2:
-            raise ValueError(f'The number of object qubits {len(obj)} should be 2')
-        s1 = spin_operator(obj)
-        s2 = [i @ j for i in s1 for j in s1]
-        return s2
-
-    def Hamiltonian(n_qudits: int, beta: float):
-        ham1, ham2 = 0, 0
-        for i in range(n_qudits - 1):
-            obj1 = [2 * i, 2 * i + 1]
-            obj2 = [2 * i + 2, 2 * i + 3]
-            ham1 += qml.sum(*[spin_operator(obj1)[i] @ spin_operator(obj2)[i] for i in range(3)])
-            ham2 += qml.sum(*[spin_operator2(obj1)[i] @ spin_operator2(obj2)[i] for i in range(9)])
-        ham = ham1 / 4 - beta * ham2 / 16
-        coeffs, obs = qml.simplify(ham).terms()
-        coeffs = torch.tensor(coeffs).real
-        return qml.Hamiltonian(coeffs, obs)
 
     def qutrit_symmetric_ansatz(params: torch.Tensor):
         for i in range(n_qudits - 1):
@@ -81,7 +54,7 @@ def testing(batch_size: int, n_test: int, energy_upper: float):
     ED_states = loadmat('./mats/ED_degeneracy.mat')[f'nqd{n_qudits}'][0, 1].T
     ED_states[np.abs(ED_states) < 1e-15] = 0
     overlaps = np.empty([0, ED_states.shape[0]])
-    Ham = Hamiltonian(n_qudits, beta)
+    Ham = AKLT_model(n_qudits, beta)
 
     count, count_str = 0, ''
     start = time.perf_counter()
@@ -122,7 +95,7 @@ ground_state_energy = -2 / 3 * (n_qudits - 1)
 
 dev = qml.device('default.qubit', n_qubits)
 gpu_memory = gpus[0].memoryUtil if (gpus := GPUtil.getGPUs()) else 1
-if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 14:
+if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 12:
     device = torch.device('cuda')
 else:
     device = torch.device('cpu')
@@ -159,7 +132,7 @@ for name in sorted(os.listdir('./mats'), reverse=True):
                 fidelity_max = load['fidelity_max'].item()
                 fidelity_mean = load['fidelity_mean'].item()
                 fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}'
-            # if energy < -3.99 and fidelity_max < 0.98:
+                # if energy < -3.99 and fidelity_max < 0.98:
                 logger.add_handler()
                 n_train = load['n_train'].item()
                 info(f'Load: {path}.mat, {n_train}')

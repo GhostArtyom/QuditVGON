@@ -7,10 +7,11 @@ from logging import info
 from logger import Logger
 from scipy.io import savemat
 from VAE_model import VAEModel
-from itertools import combinations
-from Hamiltonian import AKLT_model
+from Hamiltonian import BBH_model
 import torch.distributions as dists
+from scipy.sparse.linalg import eigsh
 from torch.utils.data import DataLoader
+from exact_diagonalization import qutrit_BBH_model
 from qutrit_synthesis import NUM_PR, two_qutrit_unitary_synthesis
 
 np.set_printoptions(precision=8, linewidth=200)
@@ -18,17 +19,19 @@ torch.set_printoptions(precision=8, linewidth=200)
 checkpoint = None  # input('Input checkpoint filename: ')
 
 n_layers = 2
-n_qudits = 7
-beta = -1 / 3
-n_iter = 4000
+n_qudits = 6
+n_iter = 2000
 batch_size = 16
 weight_decay = 1e-2
 learning_rate = 1e-3
+theta = 0.32 * np.pi
 
 n_qubits = 2 * n_qudits
 n_samples = batch_size * n_iter
 n_params = n_layers * (n_qudits - 1) * NUM_PR
-ground_state_energy = -2 / 3 * (n_qudits - 1)
+
+ham = qutrit_BBH_model(n_qudits, theta, is_csr=True)
+ground_state_energy = eigsh(ham, k=1, which='SA', return_eigenvectors=False)[0]
 
 z_dim = 50
 list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
@@ -41,7 +44,7 @@ if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 12:
 else:
     device = torch.device('cpu')
 
-log = f'./logs/VGON_nqd{n_qudits}_degeneracy_202412.log'
+log = f'./logs/VGON_nqd{n_qudits}_phase_202412.log'
 logger = Logger(log)
 logger.add_handler()
 
@@ -50,7 +53,7 @@ info(f'Number of qudits: {n_qudits}')
 info(f'Number of qubits: {n_qubits}')
 info(f'Weight Decay: {weight_decay:.0e}')
 info(f'Learning Rate: {learning_rate:.0e}')
-info(f'Ground State Energy: {ground_state_energy:.4f}')
+info(f'Ground State Energy: {ground_state_energy:.8f}')
 
 
 def qutrit_symmetric_ansatz(params: torch.Tensor):
@@ -73,7 +76,7 @@ def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
     return qml.expval(Ham)
 
 
-Ham = AKLT_model(n_qudits, beta)
+Ham = BBH_model(n_qudits, theta)
 model = VAEModel(n_params, z_dim, h_dim).to(device)
 if checkpoint:
     state_dict = torch.load(f'./mats/{checkpoint}.pt', map_location=device, weights_only=True)
@@ -96,36 +99,22 @@ for i, batch in enumerate(train_data):
     kl_div = -0.5 * (1 + log_var - mean.pow(2) - log_var.exp())
     kl_div = kl_div.mean()
 
-    states = circuit_state(n_layers, params)
-    cos_sims = torch.empty((0), device=device)
-    fidelities = torch.empty((0), device=device)
-    for ind in combinations(range(batch_size), 2):
-        cos_sim = torch.cosine_similarity(params[ind[0], :], params[ind[1], :], dim=0)
-        cos_sims = torch.cat((cos_sims, cos_sim.unsqueeze(0)), dim=0)
-        fidelity = qml.math.fidelity_statevector(states[ind[0]], states[ind[1]])
-        fidelities = torch.cat((fidelities, fidelity.unsqueeze(0)), dim=0)
-    cos_sim_max = cos_sims.max()
-    cos_sim_mean = cos_sims.mean()
-    fidelity_max = fidelities.max()
-    fidelity_mean = fidelities.mean()
-
-    energy_coeff, kl_coeff, fidelity_mean_coeff = 1, 1, 1
-    loss = energy_coeff * energy_mean + kl_coeff * kl_div + fidelity_mean_coeff * fidelity_mean
+    energy_coeff, kl_coeff = 1, 1
+    loss = energy_coeff * energy_mean + kl_coeff * kl_div
     loss.backward()
     optimizer.step()
 
     t = time.perf_counter() - start
-    fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}, {fidelities.min():.8f}'
-    cos_sim_str = f'Cos_Sim: {cos_sim_max:.8f}, {cos_sim_mean:.8f}, {cos_sims.min():.8f}'
-    info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, KL: {kl_div:.4e}, {fidelity_str}, {cos_sim_str}, {i+1}/{n_iter}, {t:.2f}')
+    energy_str = f'Energy: {energy.max():.8f}, {energy.mean():.8f}, {energy.min():.8f}'
+    info(f'Loss: {loss:.8f}, {energy_str}, KL: {kl_div:.4e}, {i+1}/{n_iter}, {t:.2f}')
 
     energy_gap = energy_mean - ground_state_energy
-    energy_tol, kl_tol, fidelity_tol = 1e-2, 1e-5, 0.98
-    if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and fidelity_max < fidelity_tol):
+    energy_tol, kl_tol = 1e-2, 1e-5
+    if (i + 1) % 500 == 0 or i + 1 >= n_iter:
         time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
         path = f'./mats/VGON_nqd{n_qudits}_{time_str}'
         mat_dict = {
-            'beta': beta,
+            'theta': theta,
             'n_iter': n_iter,
             'loss': loss.item(),
             'n_qudits': n_qudits,
@@ -135,12 +124,8 @@ for i, batch in enumerate(train_data):
             'energy': energy_mean.item(),
             'n_train': f'{i+1}/{n_iter}',
             'weight_decay': weight_decay,
-            'learning_rate': learning_rate,
-            'cos_sim_max': cos_sim_max.item(),
-            'cos_sim_mean': cos_sim_mean.item(),
-            'fidelity_max': fidelity_max.item(),
-            'fidelity_mean': fidelity_mean.item()
+            'learning_rate': learning_rate
         }
         savemat(f'{path}.mat', mat_dict)
         torch.save(model.state_dict(), f'{path}.pt')
-        info(f'Energy Gap: {energy_gap:.4e}, KL: {kl_div:.4e}, Fidelity_Max: {fidelity_max:.8f}, {i+1}/{n_iter}, Save: {path}.mat&pt')
+        info(f'Energy Gap: {energy_gap:.4e}, KL: {kl_div:.4e}, {i+1}/{n_iter}, Save: {path}.mat&pt')

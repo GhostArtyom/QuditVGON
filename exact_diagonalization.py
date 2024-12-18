@@ -1,7 +1,6 @@
-import sys
-import logging
 import numpy as np
 from logging import info
+from logger import Logger
 from scipy.sparse.linalg import eigsh
 from utils import tensor_product_sparse
 from scipy.sparse import eye, csr_matrix
@@ -22,9 +21,7 @@ def qubit_spin_operator(n_qudits: int, is_csr: bool = False):
         d1, d2 = 4**i, 4**(n_qudits - i - 2)
         for j in sym_list:
             ss += tensor_product_sparse(eye(d1), j, j, eye(d2))
-    if is_csr:
-        return ss
-    return ss.toarray()
+    return ss if is_csr else ss.toarray()
 
 
 def qubit_spin_operator2(n_qudits: int, is_csr: bool = False):
@@ -33,9 +30,7 @@ def qubit_spin_operator2(n_qudits: int, is_csr: bool = False):
         d1, d2 = 4**i, 4**(n_qudits - i - 2)
         for j in sym2_list:
             ss += tensor_product_sparse(eye(d1), j, j, eye(d2))
-    if is_csr:
-        return ss
-    return ss.toarray()
+    return ss if is_csr else ss.toarray()
 
 
 def qutrit_spin_operator(n_qudits: int, is_csr: bool = False):
@@ -44,9 +39,7 @@ def qutrit_spin_operator(n_qudits: int, is_csr: bool = False):
         d1, d2 = 3**i, 3**(n_qudits - i - 2)
         for j in s_list:
             ss += tensor_product_sparse(eye(d1), j, j, eye(d2))
-    if is_csr:
-        return ss
-    return ss.toarray()
+    return ss if is_csr else ss.toarray()
 
 
 def qutrit_spin_operator2(n_qudits: int, is_csr: bool = False):
@@ -55,45 +48,60 @@ def qutrit_spin_operator2(n_qudits: int, is_csr: bool = False):
         d1, d2 = 3**i, 3**(n_qudits - i - 2)
         for j in s2_list:
             ss += tensor_product_sparse(eye(d1), j, j, eye(d2))
-    if is_csr:
-        return ss
-    return ss.toarray()
+    return ss if is_csr else ss.toarray()
 
 
 def qubit_AKLT_model(n_qudits: int, beta: float, is_csr: bool = False):
-    s1 = qubit_spin_operator(n_qudits, is_csr=True)
-    s2 = qubit_spin_operator2(n_qudits, is_csr=True)
+    s1 = qubit_spin_operator(n_qudits, is_csr)
+    s2 = qubit_spin_operator2(n_qudits, is_csr)
     Ham = s1 - beta * s2
-    if is_csr:
-        return Ham
-    return Ham.toarray()
+    return Ham if is_csr else Ham.toarray()
 
 
 def qutrit_AKLT_model(n_qudits: int, beta: float, is_csr: bool = False):
-    s1 = qutrit_spin_operator(n_qudits, is_csr=True)
-    s2 = qutrit_spin_operator2(n_qudits, is_csr=True)
+    s1 = qutrit_spin_operator(n_qudits, is_csr)
+    s2 = qutrit_spin_operator2(n_qudits, is_csr)
     Ham = s1 - beta * s2
-    if is_csr:
-        return Ham
-    return Ham.toarray()
+    return Ham if is_csr else Ham.toarray()
 
 
 def qubit_BBH_model(n_qudits: int, theta: float, is_csr: bool = False):
-    s1 = qubit_spin_operator(n_qudits, is_csr=True)
-    s2 = qubit_spin_operator2(n_qudits, is_csr=True)
+    s1 = qubit_spin_operator(n_qudits, is_csr)
+    s2 = qubit_spin_operator2(n_qudits, is_csr)
     Ham = np.cos(theta) * s1 + np.sin(theta) * s2
-    if is_csr:
-        return Ham
-    return Ham.toarray()
+    return Ham if is_csr else Ham.toarray()
 
 
 def qutrit_BBH_model(n_qudits: int, theta: float, is_csr: bool = False):
-    s1 = qutrit_spin_operator(n_qudits, is_csr=True)
-    s2 = qutrit_spin_operator2(n_qudits, is_csr=True)
+    s1 = qutrit_spin_operator(n_qudits, is_csr)
+    s2 = qutrit_spin_operator2(n_qudits, is_csr)
     Ham = np.cos(theta) * s1 + np.sin(theta) * s2
-    if is_csr:
-        return Ham
-    return Ham.toarray()
+    return Ham if is_csr else Ham.toarray()
+
+
+def eigensolver_AKLT_model(n_qudits: int, beta: float, k: int = 1):
+    n_qubits = 2 * n_qudits
+    qutrit_Ham = qutrit_AKLT_model(n_qudits, beta, is_csr=True)
+    qubit_Ham = qubit_AKLT_model(n_qudits, beta, is_csr=True)
+    qutrit_eigval = np.sort(eigsh(qutrit_Ham, k, which='SA', return_eigenvectors=False))
+    qubit_eigval = np.sort(eigsh(qubit_Ham, k, which='SA', return_eigenvectors=False))
+    info(f'nqd: {n_qudits:2d} {parity(n_qudits)} {qutrit_eigval}')
+    info(f'nqb: {n_qubits:2d} {parity(n_qudits)} {qubit_eigval}')
+
+
+def eigensolver_BBH_model(n_qudits: int, theta: float, k: int = 1):
+    if theta == np.arctan(1 / 3):
+        phase = 'arctan(1/3)'
+    else:
+        phase = f'{theta/np.pi:.2f}π'
+    info(f'Coefficient theta: {phase}')
+    n_qubits = 2 * n_qudits
+    qutrit_Ham = qutrit_BBH_model(n_qudits, theta, is_csr=True)
+    qubit_Ham = qubit_BBH_model(n_qudits, theta, is_csr=True)
+    qutrit_eigval = np.sort(eigsh(qutrit_Ham, k, which='SA', return_eigenvectors=False))
+    qubit_eigval = np.sort(eigsh(qubit_Ham, k, which='SA', return_eigenvectors=False))
+    info(f'nqd: {n_qudits:2d} {parity(n_qudits)} {qutrit_eigval}')
+    info(f'nqb: {n_qubits:2d} {parity(n_qudits)} {qubit_eigval}')
 
 
 sx = csr_matrix([[0, 1, 0], [1, 0, 1], [0, 1, 0]]) / np.sqrt(2)
@@ -105,28 +113,12 @@ sym_list = [symmetric_encoding(i, is_csr=True) for i in s_list]
 sym2_list = [i @ j for i in sym_list for j in sym_list]
 
 if __name__ == '__main__':
-    log = './logs/ED_degeneracy.log'
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-    file_handler = logging.FileHandler(log)
-    file_handler.setLevel(logging.INFO)
-    stream_handler = logging.StreamHandler(sys.stdout)
-    stream_handler.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s %(message)s')
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-    logger.addHandler(stream_handler)
-
-    # for theta in [np.arctan(1 / 3)]:
-    #     info(f'Coefficient theta: arctan(1/3)')
-    for theta in np.array([-0.68, -0.55, -0.30, -0.16, 0.32]) * np.pi:
-        info(f'Coefficient theta: {theta/np.pi:.2f}π')
-        for n_qudits in range(2, 9):
-            k = 8 if n_qudits > 2 else 7
-            n_qubits = 2 * n_qudits
-            h3 = qutrit_BBH_model(n_qudits, theta, is_csr=True)
-            h2 = qubit_BBH_model(n_qudits, theta, is_csr=True)
-            v3 = np.sort(eigsh(h3, k, which='SA', return_eigenvectors=False))
-            v2 = np.sort(eigsh(h2, k, which='SA', return_eigenvectors=False))
-            info(f'nqd: {n_qudits:2d} {parity(n_qudits)} {v3}')
-            info(f'nqb: {n_qubits:2d} {parity(n_qudits)} {v2}')
+    log = './logs/exact_diagonalization.log'
+    logger = Logger(log)
+    coeffs = np.array([-0.68, -0.55, -0.30, -0.16, 0.32]) * np.pi
+    coeffs = np.append(coeffs, np.arctan(1 / 3))
+    n_qudits, k = 6, 8
+    for theta in coeffs:
+        logger.add_handler()
+        eigensolver_AKLT_model(n_qudits, theta, k)
+        logger.remove_handler()

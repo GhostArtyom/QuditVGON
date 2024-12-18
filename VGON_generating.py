@@ -19,29 +19,46 @@ from qutrit_synthesis import NUM_PR, two_qutrit_unitary_synthesis
 np.set_printoptions(precision=8, linewidth=200)
 torch.set_printoptions(precision=8, linewidth=200)
 
+z_dim = 50
+n_layers = 2
+n_qudits = 7
+beta = -1 / 3
+n_qubits = 2 * n_qudits
+ground_state_energy = -2 / 3 * (n_qudits - 1)
 
-def testing(batch_size: int, n_test: int, energy_upper: float):
+dev = qml.device('default.qubit', n_qubits)
+gpu_memory = gpus[0].memoryUtil if (gpus := GPUtil.getGPUs()) else 1
+if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 12:
+    device = torch.device('cuda')
+else:
+    device = torch.device('cpu')
+
+
+def qutrit_symmetric_ansatz(params: torch.Tensor):
+    for i in range(n_qudits - 1):
+        obj = list(range(n_qubits - 2 * i - 4, n_qubits - 2 * i))
+        two_qutrit_unitary_synthesis(params[i], obj)
+
+
+@qml.qnode(dev, interface='torch', diff_method='best')
+def circuit_state(n_layers: int, params: torch.Tensor):
+    params = params.transpose(0, 1).reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
+    qml.layer(qutrit_symmetric_ansatz, n_layers, params)
+    return qml.state()
+
+
+@qml.qnode(dev, interface='torch', diff_method='best')
+def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
+    params = params.transpose(0, 1).reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
+    qml.layer(qutrit_symmetric_ansatz, n_layers, params)
+    return qml.expval(Ham)
+
+
+def generating(batch_size: int, n_test: int, energy_upper: float):
     n_samples = batch_size * n_test
     n_params = n_layers * (n_qudits - 1) * NUM_PR
     list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
     h_dim = np.power(2, list_z).astype(int)
-
-    def qutrit_symmetric_ansatz(params: torch.Tensor):
-        for i in range(n_qudits - 1):
-            obj = list(range(n_qubits - 2 * i - 4, n_qubits - 2 * i))
-            two_qutrit_unitary_synthesis(params[i], obj)
-
-    @qml.qnode(dev, interface='torch', diff_method='best')
-    def circuit_state(n_layers: int, params: torch.Tensor):
-        params = params.transpose(0, 1).reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
-        qml.layer(qutrit_symmetric_ansatz, n_layers, params)
-        return qml.state()
-
-    @qml.qnode(dev, interface='torch', diff_method='best')
-    def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
-        params = params.transpose(0, 1).reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
-        qml.layer(qutrit_symmetric_ansatz, n_layers, params)
-        return qml.expval(Ham)
 
     state_dict = torch.load(f'{path}.pt', map_location=device, weights_only=True)
     model = VAEModel(n_params, z_dim, h_dim).to(device)
@@ -86,24 +103,9 @@ def testing(batch_size: int, n_test: int, energy_upper: float):
     info(f'Save: {path}.mat with count and overlaps')
 
 
-z_dim = 50
-n_layers = 2
-n_qudits = 7
-beta = -1 / 3
-n_qubits = 2 * n_qudits
-ground_state_energy = -2 / 3 * (n_qudits - 1)
-
-dev = qml.device('default.qubit', n_qubits)
-gpu_memory = gpus[0].memoryUtil if (gpus := GPUtil.getGPUs()) else 1
-if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 12:
-    device = torch.device('cuda')
-else:
-    device = torch.device('cpu')
-
 log = f'./logs/VGON_nqd{n_qudits}_generating_202412.log'
 logger = Logger(log)
 logger.add_handler()
-
 info(f'PyTorch Device: {device}')
 info(f'Number of qudits: {n_qudits}')
 info(f'Number of qubits: {n_qubits}')
@@ -137,5 +139,5 @@ for name in sorted(os.listdir('./mats'), reverse=True):
                 n_train = load['n_train'].item()
                 info(f'Load: {path}.mat, {n_train}')
                 info(f'Energy: {energy:.8f}, Energy Upper: {energy_upper:.2f}, KL: {kl_div:.4e}, {fidelity_str}')
-                testing(batch_size, n_test, energy_upper)
+                generating(batch_size, n_test, energy_upper)
                 logger.remove_handler()

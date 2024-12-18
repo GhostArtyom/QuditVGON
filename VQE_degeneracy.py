@@ -29,10 +29,6 @@ if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 12:
 else:
     device = torch.device('cpu')
 
-log = f'./logs/VQE_nqd{n_qudits}_degeneracy.log'
-logger = Logger(log)
-logger.add_handler()
-
 
 def qutrit_symmetric_ansatz(params: torch.Tensor):
     for i in range(n_qudits - 1):
@@ -54,17 +50,19 @@ def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
     return qml.expval(Ham)
 
 
-def running(n_layers: int, n_qudits: int, beta: float, n_iter: int, learning_rate: float):
-    logger.add_handler()
-    info(f'Repeat: {r+1}')
-    info(f'PyTorch Device: {device}')
-    info(f'Number of qudits: {n_qudits}')
-    info(f'Number of qubits: {n_qubits}')
-    info(f'Weight Decay: {weight_decay:.0e}')
-    info(f'Learning Rate: {learning_rate:.0e}')
+log = f'./logs/VQE_nqd{n_qudits}_degeneracy.log'
+logger = Logger(log)
+logger.add_handler()
+info(f'PyTorch Device: {device}')
+info(f'Number of qudits: {n_qudits}')
+info(f'Number of qubits: {n_qubits}')
+info(f'Weight Decay: {weight_decay:.0e}')
+info(f'Learning Rate: {learning_rate:.0e}')
 
+
+def running(n_iter: int):
     Ham = AKLT_model(n_qudits, beta)
-    params = dists.Uniform(-np.pi, np.pi).sample([batch_size, n_params]).to(device)
+    params = dists.Uniform(0, 2 * np.pi).sample([batch_size, n_params]).to(device)
     params.requires_grad_(True)
     optimizer = torch.optim.AdamW([params], lr=learning_rate, weight_decay=weight_decay)
 
@@ -77,7 +75,7 @@ def running(n_layers: int, n_qudits: int, beta: float, n_iter: int, learning_rat
         optimizer.step()
         t = time.perf_counter() - start
         energy_gap = loss - ground_state_energy
-        info(f'Loss: {loss:.8f}, {energy_gap:.4e}, {i}/{n_iter}, {t:.2f}')
+        info(f'Loss: {loss:.8f}, {energy_gap:.4e}, {i+1}/{n_iter}, {r+1}/{repeat}, {t:.2f}')
 
     params_res = params.detach().cpu().numpy()
     state_res = circuit_state(n_layers, params_res)
@@ -93,11 +91,13 @@ def running(n_layers: int, n_qudits: int, beta: float, n_iter: int, learning_rat
         'learning_rate': learning_rate
     }
     time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
-    path = f'./mats/VQE_nqd{n_qudits}_{time_str}'
+    path = f'./mats/VQE_nqd{n_qudits}_{time_str}.mat'
     savemat(path, mat_dict)
-    info(f'Save: {path}.mat')
+    info(f'Save: {path}')
+
+
+repeat = 3
+for r in range(repeat):
+    logger.add_handler()
+    running(n_iter)
     logger.remove_handler()
-
-
-for r in range(3):
-    running(n_layers, n_qudits, beta, n_iter, learning_rate)

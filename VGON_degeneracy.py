@@ -41,17 +41,6 @@ if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 12:
 else:
     device = torch.device('cpu')
 
-log = f'./logs/VGON_nqd{n_qudits}_degeneracy_202412.log'
-logger = Logger(log)
-logger.add_handler()
-
-info(f'PyTorch Device: {device}')
-info(f'Number of qudits: {n_qudits}')
-info(f'Number of qubits: {n_qubits}')
-info(f'Weight Decay: {weight_decay:.0e}')
-info(f'Learning Rate: {learning_rate:.0e}')
-info(f'Ground State Energy: {ground_state_energy:.4f}')
-
 
 def qutrit_symmetric_ansatz(params: torch.Tensor):
     for i in range(n_qudits - 1):
@@ -72,6 +61,16 @@ def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
     qml.layer(qutrit_symmetric_ansatz, n_layers, params)
     return qml.expval(Ham)
 
+
+log = f'./logs/VGON_nqd{n_qudits}_degeneracy_202412.log'
+logger = Logger(log)
+logger.add_handler()
+info(f'PyTorch Device: {device}')
+info(f'Number of qudits: {n_qudits}')
+info(f'Number of qubits: {n_qubits}')
+info(f'Weight Decay: {weight_decay:.0e}')
+info(f'Learning Rate: {learning_rate:.0e}')
+info(f'Ground State Energy: {ground_state_energy:.4f}')
 
 Ham = AKLT_model(n_qudits, beta)
 model = VAEModel(n_params, z_dim, h_dim).to(device)

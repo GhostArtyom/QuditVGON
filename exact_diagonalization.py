@@ -100,8 +100,8 @@ def eigensolver_BBH_model(n_qudits: int, theta: float, k: int = 1):
     qubit_Ham = qubit_BBH_model(n_qudits, theta, is_csr=True)
     qutrit_eigval = np.sort(eigsh(qutrit_Ham, k, which='SA', return_eigenvectors=False))
     qubit_eigval = np.sort(eigsh(qubit_Ham, k, which='SA', return_eigenvectors=False))
-    info(f'nqd: {n_qudits:2d} {parity(n_qudits)} {qutrit_eigval}')
-    info(f'nqb: {n_qubits:2d} {parity(n_qudits)} {qubit_eigval}')
+    info(f'nqd: {n_qudits:2d} {qutrit_eigval}')
+    info(f'nqb: {n_qubits:2d} {qubit_eigval}')
 
 
 sx = csr_matrix([[0, 1, 0], [1, 0, 1], [0, 1, 0]]) / np.sqrt(2)
@@ -115,10 +115,10 @@ sym2_list = [i @ j for i in sym_list for j in sym_list]
 if __name__ == '__main__':
     log = './logs/exact_diagonalization.log'
     logger = Logger(log)
-    coeffs = np.array([-0.68, -0.55, -0.30, -0.16, 0.32]) * np.pi
+    coeffs = np.array([0.32, -0.71, -0.30, -0.16]) * np.pi
     coeffs = np.append(coeffs, np.arctan(1 / 3))
     n_qudits, k = 6, 8
     for theta in coeffs:
         logger.add_handler()
-        eigensolver_AKLT_model(n_qudits, theta, k)
+        eigensolver_BBH_model(n_qudits, theta, k)
         logger.remove_handler()

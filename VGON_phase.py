@@ -6,6 +6,7 @@ import pennylane as qml
 from logging import info
 from logger import Logger
 from scipy.io import savemat
+from scipy.linalg import orth
 from VAE_model import VAEModel
 from Hamiltonian import BBH_model
 import torch.distributions as dists
@@ -64,15 +65,16 @@ def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
 def training(theta: float):
     qubit_Ham = BBH_model(n_qudits, theta)
     qutrit_ham = qutrit_BBH_model(n_qudits, theta, is_csr=True)
-    ground_state_energy, ground_state = eigsh(qutrit_ham, k=1, which='SA')
-    ground_state_energy = ground_state_energy.item()
-    encoded_ground_state = symmetric_encoding(ground_state, n_qudits).flatten()
-    encoded_ground_state = torch.from_numpy(encoded_ground_state).to(device)
-
     if theta == np.arctan(1 / 3):
-        phase = 'arctan(1/3)'
+        k, phase = 4, 'arctan(1/3)'
     else:
-        phase = f'{theta/np.pi:.2f}π'
+        k, phase = 1, f'{theta/np.pi:.2f}π'
+    ground_state_energy, ground_states = eigsh(qutrit_ham, k, which='SA')
+    ground_state_energy = ground_state_energy.min()
+    ground_states = orth(ground_states).T
+    encoded_ground_states = [symmetric_encoding(x, n_qudits) for x in ground_states]
+    encoded_ground_states = torch.from_numpy(np.array(encoded_ground_states)).to(device)
+
     info(f'Coefficient theta: {phase}')
     info(f'Ground State Energy: {ground_state_energy:.8f}')
 
@@ -87,15 +89,11 @@ def training(theta: float):
     train_data = DataLoader(data_dist, batch_size=batch_size, shuffle=True, drop_last=True)
 
     start = time.perf_counter()
+    energy_iter = torch.zeros((n_iter, batch_size), device=device)
+    fidelity_iter = torch.zeros((n_iter, batch_size), device=device)
     for i, batch in enumerate(train_data):
         model.train()
-        # if i < 200:
-        #     lr = 1e-3
-        # elif i >= 200 and i < 1000:
-        #     lr = 5e-4
-        # else:
-        #     lr = 1e-4
-        lr = 1e-3 if i < 200 else 1e-4
+        lr = 1e-3 if i < 1000 else 1e-4
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
         optimizer.zero_grad(set_to_none=True)
@@ -103,6 +101,7 @@ def training(theta: float):
 
         energy = circuit_expval(n_layers, params, qubit_Ham)
         energy_mean = energy.mean()
+        energy_iter[i] = energy.detach()
 
         kl_div = -0.5 * (1 + log_var - mean.pow(2) - log_var.exp())
         kl_div = kl_div.mean()
@@ -110,9 +109,10 @@ def training(theta: float):
         states = circuit_state(n_layers, params)
         fidelities = torch.empty((0), device=device)
         for state in states:
-            fidelity = qml.math.fidelity_statevector(state, encoded_ground_state)
-            fidelities = torch.cat((fidelities, fidelity.unsqueeze(0)), dim=0)
+            fidelity = torch.tensor([qml.math.fidelity_statevector(state, x) for x in encoded_ground_states], device=device)
+            fidelities = torch.cat((fidelities, fidelity.max().unsqueeze(0)), dim=0)
         fidelity_mean = fidelities.mean()
+        fidelity_iter[i] = fidelities.detach()
 
         energy_coeff, kl_coeff = 1, 1
         loss = energy_coeff * energy_mean + kl_coeff * kl_div
@@ -124,7 +124,9 @@ def training(theta: float):
 
         energy_gap = energy_mean - ground_state_energy
         energy_tol, kl_tol = 1e-2, 1e-5
-        if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and kl_div < kl_tol):
+        if i + 1 >= n_iter or (energy_gap < energy_tol and kl_div < kl_tol):
+            energy_iter = energy_iter.cpu().numpy()
+            fidelity_iter = fidelity_iter.cpu().numpy()
             time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
             path = f'./mats/VGON_nqd{n_qudits}_{time_str}'
             mat_dict = {
@@ -136,12 +138,14 @@ def training(theta: float):
                 'n_qubits': n_qubits,
                 'kl_div': kl_div.item(),
                 'batch_size': batch_size,
+                'energy_iter': energy_iter,
                 'energy': energy_mean.item(),
                 'n_train': f'{i+1}/{n_iter}',
                 'weight_decay': weight_decay,
                 'learning_rate': learning_rate,
+                'fidelity_iter': fidelity_iter,
                 'fidelity': fidelity_mean.item(),
-                'ground_state': ground_state.flatten(),
+                'ground_states': ground_states,
                 'ground_state_energy': ground_state_energy
             }
             savemat(f'{path}.mat', mat_dict)
@@ -156,15 +160,13 @@ logger.add_handler()
 info(f'PyTorch Device: {device}')
 info(f'Number of qudits: {n_qudits}')
 info(f'Number of qubits: {n_qubits}')
-info(f'Batch Size: {batch_size}')
 info(f'Weight Decay: {weight_decay:.0e}')
 info(f'Learning Rate: {learning_rate:.0e}')
 
-# coeffs = np.array([-0.68, -0.55, -0.30]) * np.pi
-coeffs = np.array([-0.16, 0.32]) * np.pi
-coeffs = np.append(coeffs, np.arctan(1 / 3))
+coeffs = np.array([0.32, -0.71, -0.30]) * np.pi
+coeffs = [-0.16 * np.pi, np.arctan(1 / 3)]
 checkpoint = None
-for theta in [-0.16 * np.pi]:
+for theta in coeffs:
     logger.add_handler()
     training(theta)
     logger.remove_handler()

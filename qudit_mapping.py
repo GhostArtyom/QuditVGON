@@ -116,7 +116,7 @@ def symmetric_decoding(qubit: np.ndarray, n_qudits: int = 1) -> np.ndarray:
             else:
                 raise ValueError('Qubit state is not symmetric')
     elif qubit.ndim == 2:
-        qudit = np.zeros([dim**n_qudits, dim**n_qudits], dtype=CDTYPE)
+        qudit = np.zeros((dim**n_qudits, dim**n_qudits), dtype=CDTYPE)
         for i in range(dim**n_qudits):
             i_ = ind[i]
             for j in range(dim**n_qudits):

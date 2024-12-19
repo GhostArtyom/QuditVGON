@@ -70,7 +70,7 @@ def generating(batch_size: int, n_test: int, energy_upper: float):
 
     ED_states = loadmat('./mats/ED_degeneracy.mat')[f'nqd{n_qudits}'][0, 1].T
     ED_states[np.abs(ED_states) < 1e-15] = 0
-    overlaps = np.empty([0, ED_states.shape[0]])
+    overlaps = np.empty((0, ED_states.shape[0]))
     Ham = AKLT_model(n_qudits, beta)
 
     count, count_str = 0, ''

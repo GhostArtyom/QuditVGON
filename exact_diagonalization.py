@@ -117,7 +117,7 @@ if __name__ == '__main__':
     logger = Logger(log)
     coeffs = np.array([0.32, -0.71, -0.30, -0.16]) * np.pi
     coeffs = np.append(coeffs, np.arctan(1 / 3))
-    n_qudits, k = 6, 8
+    n_qudits, k = 8, 8
     for theta in coeffs:
         logger.add_handler()
         eigensolver_BBH_model(n_qudits, theta, k)

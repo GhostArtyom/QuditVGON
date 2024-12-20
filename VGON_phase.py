@@ -5,6 +5,7 @@ import numpy as np
 import pennylane as qml
 from logging import info
 from logger import Logger
+from utils import fidelity
 from scipy.io import savemat
 from scipy.linalg import orth
 from VAE_model import VAEModel
@@ -12,7 +13,7 @@ from Hamiltonian import BBH_model
 import torch.distributions as dists
 from scipy.sparse.linalg import eigsh
 from torch.utils.data import DataLoader
-from qudit_mapping import symmetric_encoding
+from qudit_mapping import symmetric_decoding
 from exact_diagonalization import qutrit_BBH_model
 from qutrit_synthesis import NUM_PR, two_qutrit_unitary_synthesis
 
@@ -64,16 +65,15 @@ def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
 
 def training(theta: float):
     qubit_Ham = BBH_model(n_qudits, theta)
-    qutrit_ham = qutrit_BBH_model(n_qudits, theta, is_csr=True)
+    qutrit_Ham = qutrit_BBH_model(n_qudits, theta, is_csr=True)
     if theta == np.arctan(1 / 3):
         k, phase = 4, 'arctan(1/3)'
     else:
         k, phase = 1, f'{theta/np.pi:.2f}π'
-    ground_state_energy, ground_states = eigsh(qutrit_ham, k, which='SA')
+    ground_state_energy, ground_states = eigsh(qutrit_Ham, k, which='SA')
     ground_state_energy = ground_state_energy.min()
     ground_states = orth(ground_states).T
-    encoded_ground_states = [symmetric_encoding(x, n_qudits) for x in ground_states]
-    encoded_ground_states = torch.from_numpy(np.array(encoded_ground_states)).to(device)
+    ground_states[np.abs(ground_states) < 1e-15] = 0
 
     info(f'Coefficient theta: {phase}')
     info(f'Ground State Energy: {ground_state_energy:.8f}')
@@ -89,8 +89,8 @@ def training(theta: float):
     train_data = DataLoader(data_dist, batch_size=batch_size, shuffle=True, drop_last=True)
 
     start = time.perf_counter()
-    energy_iter = torch.zeros((n_iter, batch_size), device=device)
-    fidelity_iter = torch.zeros((n_iter, batch_size), device=device)
+    energy_iter = np.empty((0, batch_size))
+    fidelity_iter = np.empty((0, batch_size))
     for i, batch in enumerate(train_data):
         model.train()
         lr = 1e-3 if i < 1000 else 1e-4
@@ -100,19 +100,20 @@ def training(theta: float):
         params, mean, log_var = model(batch.to(device))
 
         energy = circuit_expval(n_layers, params, qubit_Ham)
+        energy_iter = np.vstack((energy_iter, energy.detach().cpu().numpy()))
         energy_mean = energy.mean()
-        energy_iter[i] = energy.detach()
 
         kl_div = -0.5 * (1 + log_var - mean.pow(2) - log_var.exp())
         kl_div = kl_div.mean()
 
         states = circuit_state(n_layers, params)
-        fidelities = torch.empty((0), device=device)
-        for state in states:
-            fidelity = torch.tensor([qml.math.fidelity_statevector(state, x) for x in encoded_ground_states], device=device)
-            fidelities = torch.cat((fidelities, fidelity.max().unsqueeze(0)), dim=0)
+        fidelities = np.empty(0)
+        for state in states.detach().cpu().numpy():
+            decoded_state = symmetric_decoding(state, n_qudits)
+            overlap = [fidelity(decoded_state, ground_state) for ground_state in ground_states]
+            fidelities = np.append(fidelities, max(overlap))
+        fidelity_iter = np.vstack((fidelity_iter, fidelities))
         fidelity_mean = fidelities.mean()
-        fidelity_iter[i] = fidelities.detach()
 
         energy_coeff, kl_coeff = 1, 1
         loss = energy_coeff * energy_mean + kl_coeff * kl_div
@@ -125,8 +126,6 @@ def training(theta: float):
         energy_gap = energy_mean - ground_state_energy
         energy_tol, kl_tol = 1e-2, 1e-5
         if i + 1 >= n_iter or (energy_gap < energy_tol and kl_div < kl_tol):
-            energy_iter = energy_iter.cpu().numpy()
-            fidelity_iter = fidelity_iter.cpu().numpy()
             time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
             path = f'./mats/VGON_nqd{n_qudits}_{time_str}'
             mat_dict = {
@@ -134,6 +133,7 @@ def training(theta: float):
                 'phase': phase,
                 'n_iter': n_iter,
                 'loss': loss.item(),
+                'n_layers': n_layers,
                 'n_qudits': n_qudits,
                 'n_qubits': n_qubits,
                 'kl_div': kl_div.item(),
@@ -158,6 +158,7 @@ logger = Logger(log)
 logger.add_handler()
 
 info(f'PyTorch Device: {device}')
+info(f'Number of layers: {n_layers}')
 info(f'Number of qudits: {n_qudits}')
 info(f'Number of qubits: {n_qubits}')
 info(f'Weight Decay: {weight_decay:.0e}')

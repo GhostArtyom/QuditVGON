@@ -6,11 +6,11 @@ import pennylane as qml
 from logging import info
 from logger import Logger
 from utils import fidelity
-from scipy.io import savemat
 from scipy.linalg import orth
 from VAE_model import VAEModel
 from Hamiltonian import BBH_model
 import torch.distributions as dists
+from scipy.io import loadmat, savemat
 from scipy.sparse.linalg import eigsh
 from torch.utils.data import DataLoader
 from qudit_mapping import symmetric_decoding
@@ -20,63 +20,68 @@ from qutrit_synthesis import NUM_PR, two_qutrit_unitary_synthesis
 np.set_printoptions(precision=8, linewidth=200)
 torch.set_printoptions(precision=8, linewidth=200)
 
-n_layers = 2
-n_qudits = 6
-n_iter = 2000
-batch_size = 1
-weight_decay = 1e-2
-learning_rate = 1e-3
 
-n_qubits = 2 * n_qudits
-n_samples = batch_size * n_iter
-n_params = n_layers * (n_qudits - 1) * NUM_PR
+def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: float, checkpoint: str = None):
+    weight_decay = 1e-2
+    learning_rate = 1e-3
+    n_qubits = 2 * n_qudits
+    n_samples = batch_size * n_iter
+    n_params = n_layers * (n_qudits - 1) * NUM_PR
+    phase = 'arctan(1/3)' if theta == np.arctan(1 / 3) else f'{theta/np.pi:.2f}'
 
-z_dim = 50
-list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
-h_dim = np.power(2, list_z).astype(int)
+    z_dim = 50
+    list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
+    h_dim = np.power(2, list_z).astype(int)
 
-dev = qml.device('default.qubit', n_qubits)
-gpu_memory = gpus[0].memoryUtil if (gpus := GPUtil.getGPUs()) else 1
-if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 12:
-    device = torch.device('cuda')
-else:
-    device = torch.device('cpu')
+    dev = qml.device('default.qubit', n_qubits)
+    gpu_memory = gpus[0].memoryUtil if (gpus := GPUtil.getGPUs()) else 1
+    if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 12:
+        device = torch.device('cuda')
+    else:
+        device = torch.device('cpu')
 
+    log = f'./logs/VGON_nqd{n_qudits}_phase_L{n_layers}_202412.log'
+    logger = Logger(log)
+    logger.add_handler()
 
-def qutrit_symmetric_ansatz(params: torch.Tensor):
-    for i in range(n_qudits - 1):
-        obj = list(range(n_qubits - 2 * i - 4, n_qubits - 2 * i))
-        two_qutrit_unitary_synthesis(params[i], obj)
+    info(f'PyTorch Device: {device}')
+    info(f'Number of layers: {n_layers}')
+    info(f'Number of qudits: {n_qudits}')
+    info(f'Number of qubits: {n_qubits}')
+    info(f'Weight Decay: {weight_decay:.0e}')
+    info(f'Learning Rate: {learning_rate:.0e}')
+    info(f'Coefficient phase: {phase}')
 
+    def qutrit_symmetric_ansatz(params: torch.Tensor):
+        for i in range(n_qudits - 1):
+            obj = list(range(n_qubits - 2 * i - 4, n_qubits - 2 * i))
+            two_qutrit_unitary_synthesis(params[i], obj)
 
-@qml.qnode(dev, interface='torch', diff_method='best')
-def circuit_state(n_layers: int, params: torch.Tensor):
-    params = params.transpose(0, 1).reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
-    qml.layer(qutrit_symmetric_ansatz, n_layers, params)
-    return qml.state()
+    @qml.qnode(dev, interface='torch', diff_method='best')
+    def circuit_state(n_layers: int, params: torch.Tensor):
+        params = params.transpose(0, 1).reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
+        qml.layer(qutrit_symmetric_ansatz, n_layers, params)
+        return qml.state()
 
+    @qml.qnode(dev, interface='torch', diff_method='best')
+    def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
+        params = params.transpose(0, 1).reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
+        qml.layer(qutrit_symmetric_ansatz, n_layers, params)
+        return qml.expval(Ham)
 
-@qml.qnode(dev, interface='torch', diff_method='best')
-def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
-    params = params.transpose(0, 1).reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
-    qml.layer(qutrit_symmetric_ansatz, n_layers, params)
-    return qml.expval(Ham)
-
-
-def training(theta: float):
     qubit_Ham = BBH_model(n_qudits, theta)
     qutrit_Ham = qutrit_BBH_model(n_qudits, theta, is_csr=True)
-    if theta == np.arctan(1 / 3):
-        k, phase = 4, 'arctan(1/3)'
-    else:
-        k, phase = 1, f'{theta/np.pi:.2f}π'
-    ground_state_energy, ground_states = eigsh(qutrit_Ham, k, which='SA')
+
+    ground_state_energy, ground_states = eigsh(qutrit_Ham, k=4, which='SA')
+    ind = np.where(np.isclose(ground_state_energy, ground_state_energy.min()))
     ground_state_energy = ground_state_energy.min()
+    info(f'Ground State Energy: {ground_state_energy:.8f}')
+
+    ground_states = ground_states[:, ind[0]]
     ground_states = orth(ground_states).T
     ground_states[np.abs(ground_states) < 1e-15] = 0
-
-    info(f'Coefficient theta: {phase}')
-    info(f'Ground State Energy: {ground_state_energy:.8f}')
+    degeneracy = ground_states.shape[0]
+    info(f'Degree of degeneracy: {degeneracy}')
 
     model = VAEModel(n_params, z_dim, h_dim).to(device)
     if checkpoint:
@@ -90,30 +95,27 @@ def training(theta: float):
 
     start = time.perf_counter()
     energy_iter = np.empty((0, batch_size))
-    fidelity_iter = np.empty((0, batch_size))
+    fidelity_iter = np.empty((0, batch_size, degeneracy))
     for i, batch in enumerate(train_data):
-        model.train()
-        lr = 1e-3 if i < 1000 else 1e-4
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = lr
         optimizer.zero_grad(set_to_none=True)
         params, mean, log_var = model(batch.to(device))
 
         energy = circuit_expval(n_layers, params, qubit_Ham)
-        energy_iter = np.vstack((energy_iter, energy.detach().cpu().numpy()))
         energy_mean = energy.mean()
+        energy = energy.detach().cpu().numpy()
+        energy_iter = np.vstack((energy_iter, energy))
 
         kl_div = -0.5 * (1 + log_var - mean.pow(2) - log_var.exp())
         kl_div = kl_div.mean()
 
-        states = circuit_state(n_layers, params)
-        fidelities = np.empty(0)
-        for state in states.detach().cpu().numpy():
+        states = circuit_state(n_layers, params).detach().cpu().numpy()
+        fidelities = np.empty((0, degeneracy))
+        for state in states:
             decoded_state = symmetric_decoding(state, n_qudits)
             overlap = [fidelity(decoded_state, ground_state) for ground_state in ground_states]
-            fidelities = np.append(fidelities, max(overlap))
-        fidelity_iter = np.vstack((fidelity_iter, fidelities))
-        fidelity_mean = fidelities.mean()
+            fidelities = np.vstack((fidelities, overlap))
+        fidelity_iter = np.concatenate((fidelity_iter, fidelities[np.newaxis]))
+        fidelity_mean = fidelities.mean(axis=0)
 
         energy_coeff, kl_coeff = 1, 1
         loss = energy_coeff * energy_mean + kl_coeff * kl_div
@@ -121,11 +123,10 @@ def training(theta: float):
         optimizer.step()
 
         t = time.perf_counter() - start
-        info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, KL: {kl_div:.4e}, Fidelity: {fidelity_mean:.8f}, {lr:.0e}, {i+1}/{n_iter}, {t:.2f}')
+        info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, KL: {kl_div:.4e}, Fidelity: {fidelity_mean.max():.8f}, {i+1}/{n_iter}, {t:.2f}')
 
         energy_gap = energy_mean - ground_state_energy
-        energy_tol, kl_tol = 1e-2, 1e-5
-        if i + 1 >= n_iter or (energy_gap < energy_tol and kl_div < kl_tol):
+        if i + 1 >= n_iter:
             time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
             path = f'./mats/VGON_nqd{n_qudits}_{time_str}'
             mat_dict = {
@@ -138,36 +139,38 @@ def training(theta: float):
                 'n_qubits': n_qubits,
                 'kl_div': kl_div.item(),
                 'batch_size': batch_size,
-                'energy_iter': energy_iter,
+                'fidelity': fidelity_mean,
                 'energy': energy_mean.item(),
                 'n_train': f'{i+1}/{n_iter}',
                 'weight_decay': weight_decay,
                 'learning_rate': learning_rate,
-                'fidelity_iter': fidelity_iter,
-                'fidelity': fidelity_mean.item(),
                 'ground_states': ground_states,
+                'energy_iter': energy_iter.squeeze(),
+                'fidelity_iter': fidelity_iter.squeeze(),
                 'ground_state_energy': ground_state_energy
             }
             savemat(f'{path}.mat', mat_dict)
             torch.save(model.state_dict(), f'{path}.pt')
             info(f'Energy Gap: {energy_gap:.4e}, KL: {kl_div:.4e}, {i+1}/{n_iter}, Save: {path}.mat&pt')
-
-
-log = f'./logs/VGON_nqd{n_qudits}_phase_202412.log'
-logger = Logger(log)
-logger.add_handler()
-
-info(f'PyTorch Device: {device}')
-info(f'Number of layers: {n_layers}')
-info(f'Number of qudits: {n_qudits}')
-info(f'Number of qubits: {n_qubits}')
-info(f'Weight Decay: {weight_decay:.0e}')
-info(f'Learning Rate: {learning_rate:.0e}')
-
-coeffs = np.array([0.32, -0.71, -0.30]) * np.pi
-coeffs = [-0.16 * np.pi, np.arctan(1 / 3)]
-checkpoint = None
-for theta in coeffs:
-    logger.add_handler()
-    training(theta)
+    torch.cuda.empty_cache()
     logger.remove_handler()
+
+
+n_qudits = 7
+n_iter = 1000
+batch_size = 8
+
+coeffs = np.array([-0.74, -0.26, -0.24, 0.24, 0.26, 0.49]) * np.pi
+coeffs = [np.arctan(1 / 3)]
+
+checkpoint = None
+if checkpoint:
+    load = loadmat(f'./mats/{checkpoint}.mat')
+    coeffs = [load['theta'].item()]
+    n_layers = load['n_layers'].item()
+    n_qudits = load['n_qudits'].item()
+    batch_size = load['batch_size'].item()
+
+for theta in coeffs:
+    for n_layers in [3, 2, 1]:
+        training(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)

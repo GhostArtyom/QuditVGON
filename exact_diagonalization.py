@@ -94,7 +94,7 @@ def eigensolver_BBH_model(n_qudits: int, theta: float, k: int = 1):
         phase = 'arctan(1/3)'
     else:
         phase = f'{theta/np.pi:.2f}π'
-    info(f'Coefficient theta: {phase}')
+    info(f'Coefficient phase: {phase}')
     n_qubits = 2 * n_qudits
     qutrit_Ham = qutrit_BBH_model(n_qudits, theta, is_csr=True)
     qubit_Ham = qubit_BBH_model(n_qudits, theta, is_csr=True)

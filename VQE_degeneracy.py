@@ -24,7 +24,7 @@ ground_state_energy = -2 / 3 * (n_qudits - 1)
 
 dev = qml.device('default.qubit', n_qubits)
 gpu_memory = gpus[0].memoryUtil if (gpus := GPUtil.getGPUs()) else 1
-if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 12:
+if torch.cuda.is_available() and gpu_memory < 0.8 and n_qubits >= 12:
     device = torch.device('cuda')
 else:
     device = torch.device('cpu')

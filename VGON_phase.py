@@ -22,12 +22,12 @@ torch.set_printoptions(precision=8, linewidth=200)
 
 
 def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: float, checkpoint: str = None):
-    weight_decay = 1e-2
+    weight_decay = 1e-3
     learning_rate = 1e-3
     n_qubits = 2 * n_qudits
     n_samples = batch_size * n_iter
     n_params = n_layers * (n_qudits - 1) * NUM_PR
-    phase = 'arctan(1/3)' if theta == np.arctan(1 / 3) else f'{theta/np.pi:.2f}'
+    phase = 'arctan(1/3)' if theta == np.arctan(1 / 3) else f'{theta/np.pi:.2f}π'
 
     z_dim = 50
     list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
@@ -93,7 +93,6 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
     data_dist = dists.Uniform(0, 1).sample([n_samples, n_params])
     train_data = DataLoader(data_dist, batch_size=batch_size, shuffle=True, drop_last=True)
 
-    count = 0
     start = time.perf_counter()
     energy_iter = np.empty((0, batch_size))
     fidelity_iter = np.empty((0, batch_size, degeneracy))
@@ -129,34 +128,31 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         t = time.perf_counter() - start
         info(f'Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, Fidelity: {fidelity_sum:.8f}, {fidelity_gap:.4e}, {i+1}/{n_iter}, {t:.2f}')
 
-        count += 1 if energy_gap < 1e-2 and fidelity_gap < 1e-2 else 0
-        if i + 1 >= n_iter or (i + 1 >= 200 and count >= 10):
-            time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
-            path = f'./mats/VGON_nqd{n_qudits}_L{n_layers}_{time_str}'
-            mat_dict = {
-                'theta': theta,
-                'phase': phase,
-                'n_iter': n_iter,
-                'loss': loss.item(),
-                'n_layers': n_layers,
-                'n_qudits': n_qudits,
-                'n_qubits': n_qubits,
-                'kl_div': kl_div.item(),
-                'batch_size': batch_size,
-                'fidelity': fidelity_mean,
-                'energy': energy_mean.item(),
-                'n_train': f'{i+1}/{n_iter}',
-                'weight_decay': weight_decay,
-                'learning_rate': learning_rate,
-                'ground_states': ground_states,
-                'energy_iter': energy_iter.squeeze(),
-                'fidelity_iter': fidelity_iter.squeeze(),
-                'ground_state_energy': ground_state_energy
-            }
-            savemat(f'{path}.mat', mat_dict)
-            torch.save(model.state_dict(), f'{path}.pt')
-            info(f'Save: {path}.mat&pt, {i+1}/{n_iter}')
-            break
+    time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
+    path = f'./mats/VGON_nqd{n_qudits}_L{n_layers}_{time_str}'
+    mat_dict = {
+        'theta': theta,
+        'phase': phase,
+        'n_iter': n_iter,
+        'loss': loss.item(),
+        'n_layers': n_layers,
+        'n_qudits': n_qudits,
+        'n_qubits': n_qubits,
+        'kl_div': kl_div.item(),
+        'batch_size': batch_size,
+        'fidelity': fidelity_mean,
+        'energy': energy_mean.item(),
+        'n_train': f'{i+1}/{n_iter}',
+        'weight_decay': weight_decay,
+        'learning_rate': learning_rate,
+        'ground_states': ground_states,
+        'energy_iter': energy_iter.squeeze(),
+        'fidelity_iter': fidelity_iter.squeeze(),
+        'ground_state_energy': ground_state_energy
+    }
+    savemat(f'{path}.mat', mat_dict)
+    torch.save(model.state_dict(), f'{path}.pt')
+    info(f'Save: {path}.mat&pt, {i+1}/{n_iter}')
     torch.cuda.empty_cache()
     logger.remove_handler()
 
@@ -166,7 +162,6 @@ n_iter = 500
 batch_size = 8
 
 coeffs = np.array([-0.74, -0.26, -0.24, 0.24, 0.26, 0.49]) * np.pi
-coeffs = [np.arctan(1 / 3)]
 
 checkpoint = None
 if checkpoint:
@@ -177,5 +172,5 @@ if checkpoint:
     batch_size = load['batch_size'].item()
 
 for theta in coeffs:
-    for n_layers in [3, 2, 1]:
+    for n_layers in [1, 2, 3]:
         training(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)

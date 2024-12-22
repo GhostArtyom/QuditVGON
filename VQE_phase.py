@@ -21,11 +21,11 @@ def running(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: f
     learning_rate = 1e-2
     n_qubits = 2 * n_qudits
     n_params = n_layers * (n_qudits - 1) * NUM_PR
-    phase = 'arctan(1/3)' if theta == np.arctan(1 / 3) else f'{theta/np.pi:.2f}'
+    phase = 'arctan(1/3)' if theta == np.arctan(1 / 3) else f'{theta/np.pi:.2f}π'
 
     dev = qml.device('default.qubit', n_qubits)
     gpu_memory = gpus[0].memoryUtil if (gpus := GPUtil.getGPUs()) else 1
-    if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 12:
+    if torch.cuda.is_available() and gpu_memory < 0.8 and n_qubits >= 12:
         device = torch.device('cuda')
     else:
         device = torch.device('cpu')
@@ -35,6 +35,7 @@ def running(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: f
     logger.add_handler()
 
     info(f'PyTorch Device: {device}')
+    info(f'Number of layers: {n_layers}')
     info(f'Number of qudits: {n_qudits}')
     info(f'Number of qubits: {n_qubits}')
     info(f'Weight Decay: {weight_decay:.0e}')
@@ -81,7 +82,6 @@ def running(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: f
     params.requires_grad_(True)
     optimizer = torch.optim.AdamW([params], lr=learning_rate, weight_decay=weight_decay)
 
-    count = 0
     start = time.perf_counter()
     energy_iter = np.empty((0, batch_size))
     fidelity_iter = np.empty((0, batch_size, degeneracy))
@@ -110,35 +110,32 @@ def running(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: f
         t = time.perf_counter() - start
         info(f'Energy: {energy_mean:.8f}, {energy_gap:.4e}, Fidelity: {fidelity_sum:.8f}, {fidelity_gap:.4e}, {i+1}/{n_iter}, {t:.2f}')
 
-        count += 1 if energy_gap < 1e-2 and fidelity_gap < 1e-2 else 0
-        if i + 1 >= n_iter or (i + 1 >= 200 and count >= 10):
-            params = params.detach().cpu().numpy()
-            time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
-            path = f'./mats/VQE_nqd{n_qudits}_L{n_layers}_{time_str}.mat'
-            mat_dict = {
-                'theta': theta,
-                'phase': phase,
-                'n_iter': n_iter,
-                'loss': energy_mean.item(),
-                'n_layers': n_layers,
-                'n_qudits': n_qudits,
-                'n_qubits': n_qubits,
-                'states_res': states,
-                'params_res': params,
-                'batch_size': batch_size,
-                'fidelity': fidelity_mean,
-                'n_train': f'{i+1}/{n_iter}',
-                'weight_decay': weight_decay,
-                'learning_rate': learning_rate,
-                'ground_states': ground_states,
-                'energy': energy.mean().item(),
-                'energy_iter': energy_iter.squeeze(),
-                'fidelity_iter': fidelity_iter.squeeze(),
-                'ground_state_energy': ground_state_energy
-            }
-            savemat(path, mat_dict)
-            info(f'Save: {path}.mat&pt, {i+1}/{n_iter}')
-            break
+    params = params.detach().cpu().numpy()
+    time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
+    path = f'./mats/VQE_nqd{n_qudits}_L{n_layers}_{time_str}.mat'
+    mat_dict = {
+        'theta': theta,
+        'phase': phase,
+        'n_iter': n_iter,
+        'loss': energy_mean.item(),
+        'n_layers': n_layers,
+        'n_qudits': n_qudits,
+        'n_qubits': n_qubits,
+        'states_res': states,
+        'params_res': params,
+        'batch_size': batch_size,
+        'fidelity': fidelity_mean,
+        'n_train': f'{i+1}/{n_iter}',
+        'weight_decay': weight_decay,
+        'learning_rate': learning_rate,
+        'ground_states': ground_states,
+        'energy': energy.mean().item(),
+        'energy_iter': energy_iter.squeeze(),
+        'fidelity_iter': fidelity_iter.squeeze(),
+        'ground_state_energy': ground_state_energy
+    }
+    savemat(path, mat_dict)
+    info(f'Save: {path}, {i+1}/{n_iter}')
     torch.cuda.empty_cache()
     logger.remove_handler()
 
@@ -148,7 +145,6 @@ n_iter = 500
 batch_size = 1
 
 coeffs = np.array([-0.74, -0.26, -0.24, 0.24, 0.26, 0.49]) * np.pi
-coeffs = [np.arctan(1 / 3)]
 
 checkpoint = None
 if checkpoint:
@@ -159,5 +155,5 @@ if checkpoint:
     batch_size = load['batch_size'].item()
 
 for theta in coeffs:
-    for n_layers in [3, 2, 1]:
+    for n_layers in [1, 2, 3]:
         running(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)

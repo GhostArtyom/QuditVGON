@@ -144,7 +144,8 @@ n_qudits = 7
 n_iter = 500
 batch_size = 1
 
-coeffs = np.array([-0.74, -0.26, -0.24, 0.24, 0.26, 0.49]) * np.pi
+# -0.26, -0.24, 0.24, 0.26, 
+coeffs = np.array([-0.74, 0.49]) * np.pi
 
 checkpoint = None
 if checkpoint:

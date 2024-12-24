@@ -154,6 +154,6 @@ if checkpoint:
     n_qudits = load['n_qudits'].item()
     batch_size = load['batch_size'].item()
 
+n_layers = int(input('Input layers: '))
 for theta in coeffs:
-    for n_layers in [1, 2, 3]:
-        running(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)
+    running(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)

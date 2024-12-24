@@ -9,7 +9,7 @@ class Logger:
         logger.setLevel(level)
         formatter = logging.Formatter('%(asctime)s %(message)s')
 
-        file_handler = logging.FileHandler(filename)
+        file_handler = logging.FileHandler(filename, encoding='utf-8')
         file_handler.setLevel(level)
         file_handler.setFormatter(formatter)
 

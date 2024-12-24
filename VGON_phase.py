@@ -22,7 +22,7 @@ torch.set_printoptions(precision=8, linewidth=200)
 
 
 def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: float, checkpoint: str = None):
-    weight_decay = 1e-3
+    weight_decay = 1e-4
     learning_rate = 1e-3
     n_qubits = 2 * n_qudits
     n_samples = batch_size * n_iter
@@ -35,7 +35,7 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
 
     dev = qml.device('default.qubit', n_qubits)
     gpu_memory = gpus[0].memoryUtil if (gpus := GPUtil.getGPUs()) else 1
-    if torch.cuda.is_available() and gpu_memory < 0.5 and n_qubits >= 12:
+    if torch.cuda.is_available() and gpu_memory < 0.8 and n_qubits >= 12:
         device = torch.device('cuda')
     else:
         device = torch.device('cpu')
@@ -161,7 +161,8 @@ n_qudits = 7
 n_iter = 500
 batch_size = 8
 
-coeffs = np.array([-0.74, -0.26, -0.24, 0.24, 0.26, 0.49]) * np.pi
+# -0.74, -0.26, -0.24, 0.24, 0.26, 0.49
+coeffs = np.array([-0.74, -0.26, -0.24]) * np.pi
 
 checkpoint = None
 if checkpoint:
@@ -172,5 +173,5 @@ if checkpoint:
     batch_size = load['batch_size'].item()
 
 for theta in coeffs:
-    for n_layers in [1, 2, 3]:
+    for n_layers in [4]:
         training(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)

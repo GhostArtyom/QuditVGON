@@ -8,6 +8,7 @@ from logger import Logger
 from utils import fidelity
 from scipy.linalg import orth
 from VAE_model import VAEModel
+from itertools import combinations
 from Hamiltonian import BBH_model
 import torch.distributions as dists
 from scipy.io import loadmat, savemat
@@ -22,7 +23,7 @@ torch.set_printoptions(precision=8, linewidth=200)
 
 
 def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: float, checkpoint: str = None):
-    weight_decay = 1e-4
+    weight_decay = 0
     learning_rate = 1e-3
     n_qubits = 2 * n_qudits
     n_samples = batch_size * n_iter
@@ -40,7 +41,7 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
     else:
         device = torch.device('cpu')
 
-    log = f'./logs/VGON_nqd{n_qudits}_L{n_layers}_phase_202412.log'
+    log = f'./logs/VGON_nqd{n_qudits}_L{n_layers}_phase_202501.log'
     logger = Logger(log)
     logger.add_handler()
 
@@ -120,49 +121,78 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         fidelity_sum = fidelity_mean.sum()
         fidelity_gap = 1 - fidelity_sum
 
-        energy_coeff, kl_coeff = 1, 1
-        loss = energy_coeff * energy_mean + kl_coeff * kl_div
+        cos_sims = torch.empty((0), device=device)
+        for ind in combinations(range(batch_size), 2):
+            cos_sim = torch.cosine_similarity(params[ind[0], :], params[ind[1], :], dim=0)
+            cos_sims = torch.cat((cos_sims, cos_sim.unsqueeze(0)), dim=0)
+        cos_sim_max = cos_sims.max()
+        cos_sim_mean = cos_sims.mean()
+
+        kl_coeff = 1
+        # energy_coeff, kl_coeff, cos_sim_coeff = 1, 1, 1
+        # First let cos_sim_max down to a lower value, then minimize energy?
+        if i < 200:
+            energy_coeff = 0
+            cos_sim_coeff = 6
+        else:
+            energy_coeff = 1
+            if cos_sim_max > 0.9:
+                cos_sim_coeff = 6
+            elif cos_sim_max > 0.8:
+                cos_sim_coeff = 4
+            elif cos_sim_max > 0.7:
+                cos_sim_coeff = 2
+            else:
+                cos_sim_coeff = 1
+        loss = energy_coeff * energy_mean + kl_coeff * kl_div + cos_sim_coeff * cos_sim_max
         loss.backward()
         optimizer.step()
 
         t = time.perf_counter() - start
-        info(f'Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, Fidelity: {fidelity_sum:.8f}, {fidelity_gap:.4e}, {i+1}/{n_iter}, {t:.2f}')
+        fidelity_str = f'Fidelity: {fidelity_sum:.8f}, {fidelity_gap:.4e}'
+        cos_sim_str = f'Cos_Sim: {cos_sim_max.item():.8f}, {cos_sim_mean.item():.8f}, {cos_sims.min().item():.8f}'
+        info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {fidelity_str}, {cos_sim_str}, {i+1}/{n_iter}, {t:.2f}')
 
-    time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
-    path = f'./mats/VGON_nqd{n_qudits}_L{n_layers}_{time_str}'
-    mat_dict = {
-        'theta': theta,
-        'phase': phase,
-        'n_iter': n_iter,
-        'loss': loss.item(),
-        'n_layers': n_layers,
-        'n_qudits': n_qudits,
-        'n_qubits': n_qubits,
-        'kl_div': kl_div.item(),
-        'batch_size': batch_size,
-        'fidelity': fidelity_mean,
-        'energy': energy_mean.item(),
-        'n_train': f'{i+1}/{n_iter}',
-        'weight_decay': weight_decay,
-        'learning_rate': learning_rate,
-        'ground_states': ground_states,
-        'energy_iter': energy_iter.squeeze(),
-        'fidelity_iter': fidelity_iter.squeeze(),
-        'ground_state_energy': ground_state_energy
-    }
-    savemat(f'{path}.mat', mat_dict)
-    torch.save(model.state_dict(), f'{path}.pt')
-    info(f'Save: {path}.mat&pt, {i+1}/{n_iter}')
+        energy_tol, kl_tol, cos_sim_tol = 1e-2, 1e-5, 0.8
+        if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and kl_div < kl_tol and cos_sim_max < cos_sim_tol):
+            time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
+            path = f'./mats/VGON_nqd{n_qudits}_L{n_layers}_{time_str}'
+            mat_dict = {
+                'theta': theta,
+                'phase': phase,
+                'n_iter': n_iter,
+                'loss': loss.item(),
+                'n_layers': n_layers,
+                'n_qudits': n_qudits,
+                'n_qubits': n_qubits,
+                'kl_div': kl_div.item(),
+                'batch_size': batch_size,
+                'fidelity': fidelity_mean,
+                'energy': energy_mean.item(),
+                'n_train': f'{i+1}/{n_iter}',
+                'weight_decay': weight_decay,
+                'learning_rate': learning_rate,
+                'ground_states': ground_states,
+                'cos_sim_max': cos_sim_max.item(),
+                'cos_sim_mean': cos_sim_mean.item(),
+                'energy_iter': energy_iter.squeeze(),
+                'fidelity_iter': fidelity_iter.squeeze(),
+                'ground_state_energy': ground_state_energy
+            }
+            savemat(f'{path}.mat', mat_dict)
+            torch.save(model.state_dict(), f'{path}.pt')
+            info(f'Save: {path}.mat&pt, {i+1}/{n_iter}')
     torch.cuda.empty_cache()
     logger.remove_handler()
 
 
 n_qudits = 7
-n_iter = 500
+n_iter = 2000
 batch_size = 8
 
 # -0.74, -0.26, -0.24, 0.24, 0.26, 0.49
-coeffs = np.array([-0.74, -0.26, -0.24]) * np.pi
+# coeffs = np.array([0.49, -0.74]) * np.pi
+coeffs = [np.arctan(1 / 3)]
 
 checkpoint = None
 if checkpoint:
@@ -173,5 +203,5 @@ if checkpoint:
     batch_size = load['batch_size'].item()
 
 for theta in coeffs:
-    for n_layers in [4]:
+    for n_layers in [2, 3]:
         training(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)

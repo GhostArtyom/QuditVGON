@@ -103,7 +103,7 @@ def generating(batch_size: int, n_test: int, energy_upper: float):
     info(f'Save: {path}.mat with count and overlaps')
 
 
-log = f'./logs/VGON_nqd{n_qudits}_generating_202412.log'
+log = f'./logs/VGON_nqd{n_qudits}_generating_202501.log'
 logger = Logger(log)
 logger.add_handler()
 info(f'PyTorch Device: {device}')

@@ -71,7 +71,7 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         return qml.expval(Ham)
 
     qubit_Ham = BBH_model(n_qudits, theta)
-    qutrit_Ham = qutrit_BBH_model(n_qudits, theta, is_csr=True)
+    qutrit_Ham = qutrit_BBH_model(n_qudits, theta)
 
     ground_state_energy, ground_states = eigsh(qutrit_Ham, k=4, which='SA')
     ind = np.where(np.isclose(ground_state_energy, ground_state_energy.min()))

@@ -15,7 +15,7 @@ def parity(num: int) -> str:
     return ' odd'
 
 
-def qubit_spin_operator(n_qudits: int, is_csr: bool = False):
+def qubit_spin_operator(n_qudits: int, is_csr: bool = True):
     ss = csr_matrix((4**n_qudits, 4**n_qudits), dtype=CDTYPE)
     for i in range(n_qudits - 1):
         d1, d2 = 4**i, 4**(n_qudits - i - 2)
@@ -24,7 +24,7 @@ def qubit_spin_operator(n_qudits: int, is_csr: bool = False):
     return ss if is_csr else ss.toarray()
 
 
-def qubit_spin_operator2(n_qudits: int, is_csr: bool = False):
+def qubit_spin_operator2(n_qudits: int, is_csr: bool = True):
     ss = csr_matrix((4**n_qudits, 4**n_qudits), dtype=CDTYPE)
     for i in range(n_qudits - 1):
         d1, d2 = 4**i, 4**(n_qudits - i - 2)
@@ -33,7 +33,7 @@ def qubit_spin_operator2(n_qudits: int, is_csr: bool = False):
     return ss if is_csr else ss.toarray()
 
 
-def qutrit_spin_operator(n_qudits: int, is_csr: bool = False):
+def qutrit_spin_operator(n_qudits: int, is_csr: bool = True):
     ss = csr_matrix((3**n_qudits, 3**n_qudits), dtype=CDTYPE)
     for i in range(n_qudits - 1):
         d1, d2 = 3**i, 3**(n_qudits - i - 2)
@@ -42,7 +42,7 @@ def qutrit_spin_operator(n_qudits: int, is_csr: bool = False):
     return ss if is_csr else ss.toarray()
 
 
-def qutrit_spin_operator2(n_qudits: int, is_csr: bool = False):
+def qutrit_spin_operator2(n_qudits: int, is_csr: bool = True):
     ss = csr_matrix((3**n_qudits, 3**n_qudits), dtype=CDTYPE)
     for i in range(n_qudits - 1):
         d1, d2 = 3**i, 3**(n_qudits - i - 2)
@@ -51,38 +51,38 @@ def qutrit_spin_operator2(n_qudits: int, is_csr: bool = False):
     return ss if is_csr else ss.toarray()
 
 
-def qubit_AKLT_model(n_qudits: int, beta: float, is_csr: bool = False):
-    s1 = qubit_spin_operator(n_qudits, is_csr)
-    s2 = qubit_spin_operator2(n_qudits, is_csr)
+def qubit_AKLT_model(n_qudits: int, beta: float, is_csr: bool = True):
+    s1 = qubit_spin_operator(n_qudits)
+    s2 = qubit_spin_operator2(n_qudits)
     Ham = s1 - beta * s2
     return Ham if is_csr else Ham.toarray()
 
 
-def qutrit_AKLT_model(n_qudits: int, beta: float, is_csr: bool = False):
-    s1 = qutrit_spin_operator(n_qudits, is_csr)
-    s2 = qutrit_spin_operator2(n_qudits, is_csr)
+def qutrit_AKLT_model(n_qudits: int, beta: float, is_csr: bool = True):
+    s1 = qutrit_spin_operator(n_qudits)
+    s2 = qutrit_spin_operator2(n_qudits)
     Ham = s1 - beta * s2
     return Ham if is_csr else Ham.toarray()
 
 
-def qubit_BBH_model(n_qudits: int, theta: float, is_csr: bool = False):
-    s1 = qubit_spin_operator(n_qudits, is_csr)
-    s2 = qubit_spin_operator2(n_qudits, is_csr)
+def qubit_BBH_model(n_qudits: int, theta: float, is_csr: bool = True):
+    s1 = qubit_spin_operator(n_qudits)
+    s2 = qubit_spin_operator2(n_qudits)
     Ham = np.cos(theta) * s1 + np.sin(theta) * s2
     return Ham if is_csr else Ham.toarray()
 
 
-def qutrit_BBH_model(n_qudits: int, theta: float, is_csr: bool = False):
-    s1 = qutrit_spin_operator(n_qudits, is_csr)
-    s2 = qutrit_spin_operator2(n_qudits, is_csr)
+def qutrit_BBH_model(n_qudits: int, theta: float, is_csr: bool = True):
+    s1 = qutrit_spin_operator(n_qudits)
+    s2 = qutrit_spin_operator2(n_qudits)
     Ham = np.cos(theta) * s1 + np.sin(theta) * s2
     return Ham if is_csr else Ham.toarray()
 
 
 def eigensolver_AKLT_model(n_qudits: int, beta: float, k: int = 1):
     n_qubits = 2 * n_qudits
-    qutrit_Ham = qutrit_AKLT_model(n_qudits, beta, is_csr=True)
-    qubit_Ham = qubit_AKLT_model(n_qudits, beta, is_csr=True)
+    qutrit_Ham = qutrit_AKLT_model(n_qudits, beta)
+    qubit_Ham = qubit_AKLT_model(n_qudits, beta)
     qutrit_eigval = np.sort(eigsh(qutrit_Ham, k, which='SA', return_eigenvectors=False))
     qubit_eigval = np.sort(eigsh(qubit_Ham, k, which='SA', return_eigenvectors=False))
     info(f'nqd: {n_qudits:2d} {parity(n_qudits)} {qutrit_eigval}')
@@ -96,8 +96,8 @@ def eigensolver_BBH_model(n_qudits: int, theta: float, k: int = 1):
         phase = f'{theta/np.pi:.2f}π'
     info(f'Coefficient phase: {phase}')
     n_qubits = 2 * n_qudits
-    qutrit_Ham = qutrit_BBH_model(n_qudits, theta, is_csr=True)
-    qubit_Ham = qubit_BBH_model(n_qudits, theta, is_csr=True)
+    qutrit_Ham = qutrit_BBH_model(n_qudits, theta)
+    qubit_Ham = qubit_BBH_model(n_qudits, theta)
     qutrit_eigval = np.sort(eigsh(qutrit_Ham, k, which='SA', return_eigenvectors=False))
     qubit_eigval = np.sort(eigsh(qubit_Ham, k, which='SA', return_eigenvectors=False))
     info(f'nqd: {n_qudits:2d} {qutrit_eigval}')
@@ -109,7 +109,7 @@ sy = csr_matrix([[0, -1j, 0], [1j, 0, -1j], [0, 1j, 0]]) / np.sqrt(2)
 sz = csr_matrix([[1, 0, 0], [0, 0, 0], [0, 0, -1]])
 s_list = [sx, sy, sz]
 s2_list = [i @ j for i in s_list for j in s_list]
-sym_list = [symmetric_encoding(i, is_csr=True) for i in s_list]
+sym_list = [symmetric_encoding(i) for i in s_list]
 sym2_list = [i @ j for i in sym_list for j in sym_list]
 
 if __name__ == '__main__':

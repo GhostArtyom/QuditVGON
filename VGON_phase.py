@@ -128,29 +128,24 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         cos_sim_max = cos_sims.max()
         cos_sim_mean = cos_sims.mean()
 
-        kl_coeff = 1
-        # energy_coeff, kl_coeff, cos_sim_coeff = 1, 1, 1
-        # First let cos_sim_max down to a lower value, then minimize energy?
-        if i < 200:
-            energy_coeff = 0
-            cos_sim_coeff = 6
+        energy_coeff, kl_coeff = 1, 1
+        if cos_sim_max > 0.95:
+            cos_sim_coeff = 16
+        elif cos_sim_max > 0.90:
+            cos_sim_coeff = 8
+        elif cos_sim_max > 0.85:
+            cos_sim_coeff = 4
+        elif cos_sim_max > 0.80:
+            cos_sim_coeff = 2
         else:
-            energy_coeff = 1
-            if cos_sim_max > 0.9:
-                cos_sim_coeff = 6
-            elif cos_sim_max > 0.8:
-                cos_sim_coeff = 4
-            elif cos_sim_max > 0.7:
-                cos_sim_coeff = 2
-            else:
-                cos_sim_coeff = 1
+            cos_sim_coeff = 1
         loss = energy_coeff * energy_mean + kl_coeff * kl_div + cos_sim_coeff * cos_sim_max
         loss.backward()
         optimizer.step()
 
         t = time.perf_counter() - start
         fidelity_str = f'Fidelity: {fidelity_sum:.8f}, {fidelity_gap:.4e}'
-        cos_sim_str = f'Cos_Sim: {cos_sim_max.item():.8f}, {cos_sim_mean.item():.8f}, {cos_sims.min().item():.8f}'
+        cos_sim_str = f'Cos_Sim: {cos_sim_coeff}*{cos_sim_max.item():.8f}, {cos_sim_mean.item():.8f}, {cos_sims.min().item():.8f}'
         info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {fidelity_str}, {cos_sim_str}, {i+1}/{n_iter}, {t:.2f}')
 
         energy_tol, kl_tol, cos_sim_tol = 1e-2, 1e-5, 0.8
@@ -190,9 +185,7 @@ n_qudits = 7
 n_iter = 2000
 batch_size = 8
 
-# -0.74, -0.26, -0.24, 0.24, 0.26, 0.49
-# coeffs = np.array([0.49, -0.74]) * np.pi
-coeffs = [np.arctan(1 / 3)]
+coeffs = np.array([-0.74, 0.49]) * np.pi
 
 checkpoint = None
 if checkpoint:
@@ -202,6 +195,6 @@ if checkpoint:
     n_qudits = load['n_qudits'].item()
     batch_size = load['batch_size'].item()
 
-for theta in coeffs:
-    for n_layers in [2, 3]:
+for n_layers in [2, 3]:
+    for theta in coeffs:
         training(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)

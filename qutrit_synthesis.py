@@ -62,9 +62,9 @@ def circuit_ctrl_ind(ind: List[int], obj: List[int], ctrl: List[int]):
         ctrl (List[int]): control qubits of the circuit.
     '''
     if ind == [0, 1]:
-        qml.ctrl(qml.X(obj), control=ctrl)
+        qml.ctrl(qml.X(obj), ctrl)
         qml.ctrl(qml.RY(-np.pi / 2, ctrl[0]), [obj] + ctrl[1:])
-        qml.ctrl(qml.X(ctrl[0]), control=ctrl[1:])
+        qml.ctrl(qml.X(ctrl[0]), ctrl[1:])
     elif ind == [0, 2]:
         qml.ctrl(qml.X(ctrl[0]), ctrl[1:] + [obj])
         qml.ctrl(qml.X(ctrl[0]), ctrl[1:])

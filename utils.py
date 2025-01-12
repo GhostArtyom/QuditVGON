@@ -166,7 +166,7 @@ def str_ket(state: np.ndarray, dim: int = 2, tol: float = 1e-8) -> str:
         else:
             string.append(f'{real_str}+{imag_str}j¦{base}⟩')
     print('\n'.join(string))
-    print(state)
+    print(approx_matrix(state))
 
 
 def partial_trace(rho: np.ndarray, dim: int, ind: int) -> np.ndarray:

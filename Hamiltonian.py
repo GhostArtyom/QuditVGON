@@ -26,8 +26,8 @@ def AKLT_model(n_qudits: int, beta: float):
     for i in range(n_qudits - 1):
         obj1 = [2 * i, 2 * i + 1]
         obj2 = [2 * i + 2, 2 * i + 3]
-        ham1 += qml.sum(*[spin_operator(obj1)[i] @ spin_operator(obj2)[i] for i in range(3)])
-        ham2 += qml.sum(*[spin_operator2(obj1)[i] @ spin_operator2(obj2)[i] for i in range(9)])
+        ham1 += qml.sum(*[spin_operator(obj1)[j] @ spin_operator(obj2)[j] for j in range(3)])
+        ham2 += qml.sum(*[spin_operator2(obj1)[j] @ spin_operator2(obj2)[j] for j in range(9)])
     ham = ham1 / 4 - beta * ham2 / 16
     coeffs, obs = qml.simplify(ham).terms()
     coeffs = torch.tensor(coeffs).real
@@ -39,8 +39,8 @@ def BBH_model(n_qudits: int, theta: float):
     for i in range(n_qudits - 1):
         obj1 = [2 * i, 2 * i + 1]
         obj2 = [2 * i + 2, 2 * i + 3]
-        ham1 += qml.sum(*[spin_operator(obj1)[i] @ spin_operator(obj2)[i] for i in range(3)])
-        ham2 += qml.sum(*[spin_operator2(obj1)[i] @ spin_operator2(obj2)[i] for i in range(9)])
+        ham1 += qml.sum(*[spin_operator(obj1)[j] @ spin_operator(obj2)[j] for j in range(3)])
+        ham2 += qml.sum(*[spin_operator2(obj1)[j] @ spin_operator2(obj2)[j] for j in range(9)])
     ham = np.cos(theta) * ham1 / 4 + np.sin(theta) * ham2 / 16
     coeffs, obs = qml.simplify(ham).terms()
     coeffs = torch.tensor(coeffs).real

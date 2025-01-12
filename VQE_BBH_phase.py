@@ -5,13 +5,11 @@ import numpy as np
 import pennylane as qml
 from logging import info
 from logger import Logger
-from utils import fidelity
 from scipy.linalg import orth
 from Hamiltonian import BBH_model
 import torch.distributions as dists
 from scipy.io import loadmat, savemat
 from scipy.sparse.linalg import eigsh
-from qudit_mapping import symmetric_decoding
 from exact_diagonalization import qutrit_BBH_model
 from qutrit_synthesis import NUM_PR, two_qutrit_unitary_synthesis
 
@@ -48,12 +46,6 @@ def running(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: f
             two_qutrit_unitary_synthesis(params[i], obj)
 
     @qml.qnode(dev, interface='torch', diff_method='best')
-    def circuit_state(n_layers: int, params: torch.Tensor):
-        params = params.transpose(0, 1).reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
-        qml.layer(qutrit_symmetric_ansatz, n_layers, params)
-        return qml.state()
-
-    @qml.qnode(dev, interface='torch', diff_method='best')
     def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
         params = params.transpose(0, 1).reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
         qml.layer(qutrit_symmetric_ansatz, n_layers, params)
@@ -62,16 +54,9 @@ def running(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: f
     qubit_Ham = BBH_model(n_qudits, theta)
     qutrit_Ham = qutrit_BBH_model(n_qudits, theta)
 
-    ground_state_energy, ground_states = eigsh(qutrit_Ham, k=4, which='SA')
-    ind = np.where(np.isclose(ground_state_energy, ground_state_energy.min()))
+    ground_state_energy = eigsh(qutrit_Ham, k=4, which='SA', return_eigenvectors=False)
     ground_state_energy = ground_state_energy.min()
     info(f'Ground State Energy: {ground_state_energy:.8f}')
-
-    ground_states = ground_states[:, ind[0]]
-    ground_states = orth(ground_states).T
-    ground_states[np.abs(ground_states) < 1e-15] = 0
-    degeneracy = ground_states.shape[0]
-    info(f'Degree of degeneracy: {degeneracy}')
 
     if checkpoint:
         params = torch.from_numpy(load['params_res']).to(device)
@@ -84,7 +69,6 @@ def running(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: f
 
     start = time.perf_counter()
     energy_iter = np.empty((0, batch_size))
-    fidelity_iter = np.empty((0, batch_size, degeneracy))
     for i in range(n_iter):
         optimizer.zero_grad(set_to_none=True)
         energy = circuit_expval(n_layers, params, qubit_Ham)
@@ -96,19 +80,8 @@ def running(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: f
         energy_iter = np.vstack((energy_iter, energy))
         energy_gap = energy.mean() - ground_state_energy
 
-        states = circuit_state(n_layers, params).detach().cpu().numpy()
-        fidelities = np.empty((0, degeneracy))
-        for state in states:
-            decoded_state = symmetric_decoding(state, n_qudits)
-            overlap = [fidelity(decoded_state, ground_state) for ground_state in ground_states]
-            fidelities = np.vstack((fidelities, overlap))
-        fidelity_iter = np.concatenate((fidelity_iter, fidelities[np.newaxis]))
-        fidelity_mean = fidelities.mean(axis=0)
-        fidelity_sum = fidelity_mean.sum()
-        fidelity_gap = 1 - fidelity_sum
-
         t = time.perf_counter() - start
-        info(f'Energy: {energy_mean:.8f}, {energy_gap:.4e}, Fidelity: {fidelity_sum:.8f}, {fidelity_gap:.4e}, {i+1}/{n_iter}, {t:.2f}')
+        info(f'Energy: {energy_mean:.8f}, {energy_gap:.4e}, {i+1}/{n_iter}, {t:.2f}')
 
     params = params.detach().cpu().numpy()
     time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
@@ -121,17 +94,14 @@ def running(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: f
         'n_layers': n_layers,
         'n_qudits': n_qudits,
         'n_qubits': n_qubits,
-        'states_res': states,
         'params_res': params,
         'batch_size': batch_size,
-        'fidelity': fidelity_mean,
         'n_train': f'{i+1}/{n_iter}',
         'weight_decay': weight_decay,
         'learning_rate': learning_rate,
         'ground_states': ground_states,
         'energy': energy.mean().item(),
         'energy_iter': energy_iter.squeeze(),
-        'fidelity_iter': fidelity_iter.squeeze(),
         'ground_state_energy': ground_state_energy
     }
     savemat(path, mat_dict)
@@ -141,11 +111,9 @@ def running(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: f
 
 
 n_qudits = 7
-n_iter = 500
-batch_size = 1
-
-# coeffs = np.array([-0.74, -0.26, -0.24, 0.24, 0.26, 0.49]) * np.pi
-coeffs = np.linspace(-0.70, 0.45, 24) * np.pi
+n_iter = 2000
+batch_size = 8
+coeffs = np.array([0.49]) * np.pi
 
 checkpoint = None
 if checkpoint:
@@ -155,6 +123,6 @@ if checkpoint:
     n_qudits = load['n_qudits'].item()
     batch_size = load['batch_size'].item()
 
-n_layers = int(input('Input layers: '))
-for theta in coeffs:
-    running(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)
+for n_layers in [2, 3]:
+    for theta in coeffs:
+        running(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)

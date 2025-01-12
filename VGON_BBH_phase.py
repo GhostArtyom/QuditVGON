@@ -5,7 +5,6 @@ import numpy as np
 import pennylane as qml
 from logging import info
 from logger import Logger
-from utils import fidelity
 from scipy.linalg import orth
 from VAE_model import VAEModel
 from itertools import combinations
@@ -14,7 +13,6 @@ import torch.distributions as dists
 from scipy.io import loadmat, savemat
 from scipy.sparse.linalg import eigsh
 from torch.utils.data import DataLoader
-from qudit_mapping import symmetric_decoding
 from exact_diagonalization import qutrit_BBH_model
 from qutrit_synthesis import NUM_PR, two_qutrit_unitary_synthesis
 
@@ -59,12 +57,6 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
             two_qutrit_unitary_synthesis(params[i], obj)
 
     @qml.qnode(dev, interface='torch', diff_method='best')
-    def circuit_state(n_layers: int, params: torch.Tensor):
-        params = params.transpose(0, 1).reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
-        qml.layer(qutrit_symmetric_ansatz, n_layers, params)
-        return qml.state()
-
-    @qml.qnode(dev, interface='torch', diff_method='best')
     def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
         params = params.transpose(0, 1).reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
         qml.layer(qutrit_symmetric_ansatz, n_layers, params)
@@ -73,16 +65,9 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
     qubit_Ham = BBH_model(n_qudits, theta)
     qutrit_Ham = qutrit_BBH_model(n_qudits, theta)
 
-    ground_state_energy, ground_states = eigsh(qutrit_Ham, k=4, which='SA')
-    ind = np.where(np.isclose(ground_state_energy, ground_state_energy.min()))
+    ground_state_energy = eigsh(qutrit_Ham, k=4, which='SA', return_eigenvectors=False)
     ground_state_energy = ground_state_energy.min()
     info(f'Ground State Energy: {ground_state_energy:.8f}')
-
-    ground_states = ground_states[:, ind[0]]
-    ground_states = orth(ground_states).T
-    ground_states[np.abs(ground_states) < 1e-15] = 0
-    degeneracy = ground_states.shape[0]
-    info(f'Degree of degeneracy: {degeneracy}')
 
     model = VAEModel(n_params, z_dim, h_dim).to(device)
     if checkpoint:
@@ -96,7 +81,6 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
 
     start = time.perf_counter()
     energy_iter = np.empty((0, batch_size))
-    fidelity_iter = np.empty((0, batch_size, degeneracy))
     for i, batch in enumerate(train_data):
         optimizer.zero_grad(set_to_none=True)
         params, mean, log_var = model(batch.to(device))
@@ -109,17 +93,6 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
 
         kl_div = -0.5 * (1 + log_var - mean.pow(2) - log_var.exp())
         kl_div = kl_div.mean()
-
-        states = circuit_state(n_layers, params).detach().cpu().numpy()
-        fidelities = np.empty((0, degeneracy))
-        for state in states:
-            decoded_state = symmetric_decoding(state, n_qudits)
-            overlap = [fidelity(decoded_state, ground_state) for ground_state in ground_states]
-            fidelities = np.vstack((fidelities, overlap))
-        fidelity_iter = np.concatenate((fidelity_iter, fidelities[np.newaxis]))
-        fidelity_mean = fidelities.mean(axis=0)
-        fidelity_sum = fidelity_mean.sum()
-        fidelity_gap = 1 - fidelity_sum
 
         cos_sims = torch.empty((0), device=device)
         for ind in combinations(range(batch_size), 2):
@@ -144,9 +117,8 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         optimizer.step()
 
         t = time.perf_counter() - start
-        fidelity_str = f'Fidelity: {fidelity_sum:.8f}, {fidelity_gap:.4e}'
         cos_sim_str = f'Cos_Sim: {cos_sim_coeff}*{cos_sim_max.item():.8f}, {cos_sim_mean.item():.8f}, {cos_sims.min().item():.8f}'
-        info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {fidelity_str}, {cos_sim_str}, {i+1}/{n_iter}, {t:.2f}')
+        info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {cos_sim_str}, {i+1}/{n_iter}, {t:.2f}')
 
         energy_tol, kl_tol, cos_sim_tol = 1e-2, 1e-5, 0.8
         if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and kl_div < kl_tol and cos_sim_max < cos_sim_tol):
@@ -162,16 +134,13 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
                 'n_qubits': n_qubits,
                 'kl_div': kl_div.item(),
                 'batch_size': batch_size,
-                'fidelity': fidelity_mean,
                 'energy': energy_mean.item(),
                 'n_train': f'{i+1}/{n_iter}',
                 'weight_decay': weight_decay,
                 'learning_rate': learning_rate,
-                'ground_states': ground_states,
                 'cos_sim_max': cos_sim_max.item(),
                 'cos_sim_mean': cos_sim_mean.item(),
                 'energy_iter': energy_iter.squeeze(),
-                'fidelity_iter': fidelity_iter.squeeze(),
                 'ground_state_energy': ground_state_energy
             }
             savemat(f'{path}.mat', mat_dict)
@@ -184,8 +153,7 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
 n_qudits = 7
 n_iter = 2000
 batch_size = 8
-
-coeffs = np.array([-0.74, 0.49]) * np.pi
+coeffs = np.array([0.49]) * np.pi
 
 checkpoint = None
 if checkpoint:

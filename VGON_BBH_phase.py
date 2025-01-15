@@ -5,7 +5,6 @@ import numpy as np
 import pennylane as qml
 from logging import info
 from logger import Logger
-from scipy.linalg import orth
 from VAE_model import VAEModel
 from itertools import combinations
 from Hamiltonian import BBH_model
@@ -29,7 +28,7 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
     phase = 'arctan(1/3)' if theta == np.arctan(1 / 3) else f'{theta/np.pi:.2f}π'
 
     z_dim = 50
-    list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
+    list_z = np.arange(*np.floor(np.log2([n_params, z_dim])), -1)
     h_dim = np.power(2, list_z).astype(int)
 
     dev = qml.device('default.qubit', n_qubits)
@@ -69,14 +68,14 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
     ground_state_energy = ground_state_energy.min()
     info(f'Ground State Energy: {ground_state_energy:.8f}')
 
-    model = VAEModel(n_params, z_dim, h_dim).to(device)
+    model = VAEModel(n_params, h_dim, z_dim).to(device)
     if checkpoint:
         state_dict = torch.load(f'./mats/{checkpoint}.pt', map_location=device, weights_only=True)
         model.load_state_dict(state_dict)
         info(f'Load: state_dict of {checkpoint}.pt')
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
-    data_dist = dists.Uniform(0, 1).sample([n_samples, n_params])
+    data_dist = dists.Uniform(-np.pi, np.pi).sample([n_samples, n_params])
     train_data = DataLoader(data_dist, batch_size=batch_size, shuffle=True, drop_last=True)
 
     start = time.perf_counter()
@@ -151,8 +150,9 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
 
 
 n_qudits = 7
-n_iter = 2000
+n_iter = 1000
 batch_size = 8
+# coeffs = np.array([-0.74]) * np.pi
 coeffs = np.array([0.49]) * np.pi
 
 checkpoint = None
@@ -163,6 +163,6 @@ if checkpoint:
     n_qudits = load['n_qudits'].item()
     batch_size = load['batch_size'].item()
 
-for n_layers in [2, 3]:
+for n_layers in [2]:
     for theta in coeffs:
         training(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)

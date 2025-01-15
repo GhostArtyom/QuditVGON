@@ -57,11 +57,11 @@ def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
 def generating(batch_size: int, n_test: int, energy_upper: float):
     n_samples = batch_size * n_test
     n_params = n_layers * (n_qudits - 1) * NUM_PR
-    list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
+    list_z = np.arange(*np.floor(np.log2([n_params, z_dim])), -1)
     h_dim = np.power(2, list_z).astype(int)
 
     state_dict = torch.load(f'{path}.pt', map_location=device, weights_only=True)
-    model = VAEModel(n_params, z_dim, h_dim).to(device)
+    model = VAEModel(n_params, h_dim, z_dim).to(device)
     model.load_state_dict(state_dict)
     model.eval()
 

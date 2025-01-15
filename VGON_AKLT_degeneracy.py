@@ -31,7 +31,7 @@ n_params = n_layers * (n_qudits - 1) * NUM_PR
 ground_state_energy = -2 / 3 * (n_qudits - 1)
 
 z_dim = 50
-list_z = np.arange(np.floor(np.log2(n_params)), np.ceil(np.log2(z_dim)) - 1, -1)
+list_z = np.arange(*np.floor(np.log2([n_params, z_dim])), -1)
 h_dim = np.power(2, list_z).astype(int)
 
 dev = qml.device('default.qubit', n_qubits)
@@ -73,7 +73,7 @@ info(f'Learning Rate: {learning_rate:.0e}')
 info(f'Ground State Energy: {ground_state_energy:.4f}')
 
 Ham = AKLT_model(n_qudits, beta)
-model = VAEModel(n_params, z_dim, h_dim).to(device)
+model = VAEModel(n_params, h_dim, z_dim).to(device)
 if checkpoint:
     state_dict = torch.load(f'./mats/{checkpoint}.pt', map_location=device, weights_only=True)
     model.load_state_dict(state_dict)

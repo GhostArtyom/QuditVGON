@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 class VAEModel(nn.Module):
 
-    def __init__(self, n_params: int, z_dim: int, h_dim: List[int]):
+    def __init__(self, n_params: int, h_dim: List[int], z_dim: int):
         super(VAEModel, self).__init__()
         self.encoder = nn.ModuleList([nn.Linear(n_params, h_dim[0], bias=True)])
         self.encoder += [nn.Linear(h_dim[i - 1], h_dim[i], bias=True) for i in range(1, len(h_dim))]

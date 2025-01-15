@@ -5,7 +5,6 @@ import numpy as np
 import pennylane as qml
 from logging import info
 from logger import Logger
-from scipy.linalg import orth
 from Hamiltonian import BBH_model
 import torch.distributions as dists
 from scipy.io import loadmat, savemat
@@ -99,7 +98,6 @@ def running(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: f
         'n_train': f'{i+1}/{n_iter}',
         'weight_decay': weight_decay,
         'learning_rate': learning_rate,
-        'ground_states': ground_states,
         'energy': energy.mean().item(),
         'energy_iter': energy_iter.squeeze(),
         'ground_state_energy': ground_state_energy

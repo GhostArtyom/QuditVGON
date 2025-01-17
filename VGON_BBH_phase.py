@@ -6,8 +6,8 @@ import pennylane as qml
 from logging import info
 from logger import Logger
 from VAE_model import VAEModel
-from itertools import combinations
 from Hamiltonian import BBH_model
+from itertools import combinations
 import torch.distributions as dists
 from scipy.io import loadmat, savemat
 from scipy.sparse.linalg import eigsh
@@ -152,8 +152,7 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
 n_qudits = 7
 n_iter = 1000
 batch_size = 8
-# coeffs = np.array([-0.74]) * np.pi
-coeffs = np.array([0.49]) * np.pi
+coeffs = np.array([-0.74, 0.49]) * np.pi
 
 checkpoint = None
 if checkpoint:
@@ -163,6 +162,6 @@ if checkpoint:
     n_qudits = load['n_qudits'].item()
     batch_size = load['batch_size'].item()
 
-for n_layers in [2]:
-    for theta in coeffs:
-        training(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)
+n_layers = int(input('Input n_layers: '))
+for theta in coeffs:
+    training(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)

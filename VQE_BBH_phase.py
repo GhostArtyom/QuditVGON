@@ -27,7 +27,7 @@ def running(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: f
     else:
         device = torch.device('cpu')
 
-    log = f'./logs/VQE_nqd{n_qudits}_L{n_layers}_phase_202501.log'
+    log = f'./logs/VQE_nqd{n_qudits}_L{n_layers}_phase_202502.log'
     logger = Logger(log)
     logger.add_handler()
 

@@ -62,7 +62,7 @@ def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
     return qml.expval(Ham)
 
 
-log = f'./logs/VGON_nqd{n_qudits}_degeneracy_202501.log'
+log = f'./logs/VGON_nqd{n_qudits}_degeneracy_202502.log'
 logger = Logger(log)
 logger.add_handler()
 info(f'PyTorch Device: {device}')

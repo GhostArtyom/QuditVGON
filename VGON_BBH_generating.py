@@ -39,7 +39,7 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
     else:
         device = torch.device('cpu')
 
-    log = f'./logs/VGON_nqd{n_qudits}_generating_202501.log'
+    log = f'./logs/VGON_nqd{n_qudits}_generating_202502.log'
     logger = Logger(log)
     logger.add_handler()
     info(f'Load: {path}.mat, {n_train}')
@@ -119,19 +119,21 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
     logger.remove_handler()
 
 
-pattern = r'(VGON_nqd7_L\d+_(\d{8})_\d{6}).mat'
+pattern = r'(VGON_nqd4_L\d+_(\d{8})_\d{6}).mat'
 for name in sorted(os.listdir('./mats'), reverse=True):
     match = re.search(pattern, name)
-    if match and int(match.group(2)) >= 20250117:
+    if match and int(match.group(2)) >= 20250214:
         path = f'./mats/{match.group(1)}'
         load = loadmat(f'{path}.mat')
         n_train = load['n_train'].item()
-        a = n_train.split('/')
-        if 'overlaps' not in load and a[0] == a[1]:
+        if 'overlaps' not in load:
             theta = load['theta'].item()
             phase = load['phase'].item()
+            energy = load['energy'].item()
             n_layers = load['n_layers'].item()
             n_qudits = load['n_qudits'].item()
             batch_size = load['batch_size'].item()
+            ground_state_energy = load['ground_state_energy'].item()
+            energy_gap = energy - ground_state_energy
             n_test = 100 if batch_size == 8 else int(input('Input number of test: '))
             generating(n_layers, n_qudits, n_test, batch_size, theta, phase)

@@ -38,7 +38,7 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
     else:
         device = torch.device('cpu')
 
-    log = f'./logs/VGON_nqd{n_qudits}_L{n_layers}_phase_202501.log'
+    log = f'./logs/VGON_nqd{n_qudits}_L{n_layers}_phase_202502.log'
     logger = Logger(log)
     logger.add_handler()
 
@@ -101,13 +101,13 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         cos_sim_mean = cos_sims.mean()
 
         energy_coeff, kl_coeff = 1, 1
-        if cos_sim_max > 0.95:
+        if cos_sim_mean > 0.9:
             cos_sim_coeff = 16
-        elif cos_sim_max > 0.90:
+        elif cos_sim_mean > 0.8:
             cos_sim_coeff = 8
-        elif cos_sim_max > 0.85:
+        elif cos_sim_mean > 0.7:
             cos_sim_coeff = 4
-        elif cos_sim_max > 0.80:
+        elif cos_sim_mean > 0.6:
             cos_sim_coeff = 2
         else:
             cos_sim_coeff = 1
@@ -119,7 +119,7 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         cos_sim_str = f'Cos_Sim: {cos_sim_coeff}*{cos_sim_max.item():.8f}, {cos_sim_mean.item():.8f}, {cos_sims.min().item():.8f}'
         info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {cos_sim_str}, {i+1}/{n_iter}, {t:.2f}')
 
-        energy_tol, kl_tol, cos_sim_tol = 1e-2, 1e-5, 0.8
+        energy_tol, kl_tol, cos_sim_tol = 1e-2, 1e-5, 0.6
         if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and kl_div < kl_tol and cos_sim_max < cos_sim_tol):
             time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
             path = f'./mats/VGON_nqd{n_qudits}_L{n_layers}_{time_str}'
@@ -149,8 +149,8 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
     logger.remove_handler()
 
 
-n_qudits = 7
-n_iter = 1000
+n_qudits = 4
+n_iter = 2000
 batch_size = 8
 coeffs = np.array([-0.74, 0.49]) * np.pi
 
@@ -162,6 +162,8 @@ if checkpoint:
     n_qudits = load['n_qudits'].item()
     batch_size = load['batch_size'].item()
 
-n_layers = int(input('Input n_layers: '))
-for theta in coeffs:
+# n_layers = int(input('Input number of layers: '))
+# for theta in coeffs:
+theta = np.arctan(1 / 3)
+for n_layers in [2, 3, 4]:
     training(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)

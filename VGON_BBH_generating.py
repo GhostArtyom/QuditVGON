@@ -23,7 +23,7 @@ np.set_printoptions(precision=8, linewidth=200)
 torch.set_printoptions(precision=8, linewidth=200)
 
 
-def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta, phase):
+def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta: float, phase: str, path: str):
     n_qubits = 2 * n_qudits
     n_samples = batch_size * n_test
     n_params = n_layers * (n_qudits - 1) * NUM_PR
@@ -119,10 +119,11 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
     logger.remove_handler()
 
 
-pattern = r'(VGON_nqd4_L\d+_(\d{8})_\d{6}).mat'
+date = 20250217
+pattern = r'(VGON_nqd\d+_L\d+_(\d{8})_\d{6}).mat'
 for name in sorted(os.listdir('./mats'), reverse=True):
     match = re.search(pattern, name)
-    if match and int(match.group(2)) >= 20250214:
+    if match and int(match.group(2)) >= date:
         path = f'./mats/{match.group(1)}'
         load = loadmat(f'{path}.mat')
         n_train = load['n_train'].item()
@@ -136,4 +137,4 @@ for name in sorted(os.listdir('./mats'), reverse=True):
             ground_state_energy = load['ground_state_energy'].item()
             energy_gap = energy - ground_state_energy
             n_test = 100 if batch_size == 8 else int(input('Input number of test: '))
-            generating(n_layers, n_qudits, n_test, batch_size, theta, phase)
+            generating(n_layers, n_qudits, n_test, batch_size, theta, phase, path)

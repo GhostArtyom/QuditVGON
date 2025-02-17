@@ -100,27 +100,27 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         cos_sim_max = cos_sims.max()
         cos_sim_mean = cos_sims.mean()
 
-        energy_coeff, kl_coeff = 1, 1
-        if cos_sim_mean > 0.9:
-            cos_sim_coeff = 16
-        elif cos_sim_mean > 0.8:
-            cos_sim_coeff = 8
-        elif cos_sim_mean > 0.7:
-            cos_sim_coeff = 4
-        elif cos_sim_mean > 0.6:
-            cos_sim_coeff = 2
+        energy_coeff, kl_coeff, cos_sim_mean_coeff = 1, 1, 1
+        if cos_sim_max > 0.9:
+            cos_sim_max_coeff = 4
+        elif cos_sim_max > 0.8:
+            cos_sim_max_coeff = 3
+        elif cos_sim_max > 0.7:
+            cos_sim_max_coeff = 2
+        # elif cos_sim_max > 0.6:
+        #     cos_sim_max_coeff = 2
         else:
-            cos_sim_coeff = 1
-        loss = energy_coeff * energy_mean + kl_coeff * kl_div + cos_sim_coeff * cos_sim_max
+            cos_sim_max_coeff = 1
+        loss = energy_coeff * energy_mean + kl_coeff * kl_div + cos_sim_mean_coeff * cos_sim_mean + cos_sim_max_coeff * cos_sim_max
         loss.backward()
         optimizer.step()
 
         t = time.perf_counter() - start
-        cos_sim_str = f'Cos_Sim: {cos_sim_coeff}*{cos_sim_max.item():.8f}, {cos_sim_mean.item():.8f}, {cos_sims.min().item():.8f}'
+        cos_sim_str = f'Cos_Sim: {cos_sim_max_coeff}*{cos_sim_max.item():.8f}, {cos_sim_mean_coeff}*{cos_sim_mean.item():.8f}, {cos_sims.min().item():.8f}'
         info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {cos_sim_str}, {i+1}/{n_iter}, {t:.2f}')
 
         energy_tol, kl_tol, cos_sim_tol = 1e-2, 1e-5, 0.6
-        if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and kl_div < kl_tol and cos_sim_max < cos_sim_tol):
+        if i + 4 >= n_iter or (energy_gap < energy_tol and kl_div < kl_tol and cos_sim_max < cos_sim_tol):
             time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
             path = f'./mats/VGON_nqd{n_qudits}_L{n_layers}_{time_str}'
             mat_dict = {
@@ -152,7 +152,7 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
 n_qudits = 4
 n_iter = 2000
 batch_size = 8
-coeffs = np.array([-0.74, 0.49]) * np.pi
+# coeffs = np.array([-0.74, 0.49]) * np.pi
 
 checkpoint = None
 if checkpoint:

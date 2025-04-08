@@ -88,7 +88,7 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
     data_dist = dists.Uniform(0, 1).sample([n_samples, n_params])
     test_data = DataLoader(data_dist, batch_size=batch_size, shuffle=True, drop_last=True)
 
-    count, count_str = 0, ''
+    count, count_str = 0, f'{count}/{(i+1)*batch_size}'
     start = time.perf_counter()
     for i, batch in enumerate(test_data):
         for j in range(n_test):
@@ -119,11 +119,11 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
     logger.remove_handler()
 
 
-date = 20250217
+n_test, date = 20, 20250226
 pattern = r'(VGON_nqd\d+_L\d+_(\d{8})_\d{6}).mat'
 for name in sorted(os.listdir('./mats'), reverse=True):
     match = re.search(pattern, name)
-    if match and int(match.group(2)) >= date:
+    if match and date <= int(match.group(2)):
         path = f'./mats/{match.group(1)}'
         load = loadmat(f'{path}.mat')
         n_train = load['n_train'].item()
@@ -136,5 +136,5 @@ for name in sorted(os.listdir('./mats'), reverse=True):
             batch_size = load['batch_size'].item()
             ground_state_energy = load['ground_state_energy'].item()
             energy_gap = energy - ground_state_energy
-            n_test = 100 if batch_size == 8 else int(input('Input number of test: '))
+            # n_test = 100 if batch_size == 8 else int(input('Input number of test: '))
             generating(n_layers, n_qudits, n_test, batch_size, theta, phase, path)

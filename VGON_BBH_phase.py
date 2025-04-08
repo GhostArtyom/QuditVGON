@@ -15,12 +15,12 @@ from torch.utils.data import DataLoader
 from exact_diagonalization import qutrit_BBH_model
 from qutrit_synthesis import NUM_PR, two_qutrit_unitary_synthesis
 
-np.set_printoptions(precision=8, linewidth=200)
-torch.set_printoptions(precision=8, linewidth=200)
+np.set_printoptions(precision=8, linewidth=400)
+torch.set_printoptions(precision=8, linewidth=400)
 
 
 def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: float, checkpoint: str = None):
-    weight_decay = 0
+    weight_decay = 1e-3
     learning_rate = 1e-3
     n_qubits = 2 * n_qudits
     n_samples = batch_size * n_iter
@@ -54,6 +54,12 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         for i in range(n_qudits - 1):
             obj = list(range(n_qubits - 2 * i - 4, n_qubits - 2 * i))
             two_qutrit_unitary_synthesis(params[i], obj)
+
+    @qml.qnode(dev, interface='torch', diff_method='best')
+    def circuit_state(n_layers: int, params: torch.Tensor):
+        params = params.transpose(0, 1).reshape(n_layers, n_qudits - 1, NUM_PR, batch_size)
+        qml.layer(qutrit_symmetric_ansatz, n_layers, params)
+        return qml.state()
 
     @qml.qnode(dev, interface='torch', diff_method='best')
     def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
@@ -100,27 +106,42 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         cos_sim_max = cos_sims.max()
         cos_sim_mean = cos_sims.mean()
 
+        states = circuit_state(n_layers, params)
+        cos_sims = torch.empty((0), device=device)
+        fidelities = torch.empty((0), device=device)
+        for ind in combinations(range(batch_size), 2):
+            cos_sim = torch.cosine_similarity(params[ind[0], :], params[ind[1], :], dim=0)
+            cos_sims = torch.cat((cos_sims, cos_sim.unsqueeze(0)), dim=0)
+            fidelity = qml.math.fidelity_statevector(states[ind[0]], states[ind[1]])
+            fidelities = torch.cat((fidelities, fidelity.unsqueeze(0)), dim=0)
+        cos_sim_max = cos_sims.max()
+        cos_sim_mean = cos_sims.mean()
+        fidelity_max = fidelities.max()
+        fidelity_mean = fidelities.mean()
+
         energy_coeff, kl_coeff, cos_sim_mean_coeff = 1, 1, 1
-        if cos_sim_max > 0.9:
-            cos_sim_max_coeff = 4
-        elif cos_sim_max > 0.8:
-            cos_sim_max_coeff = 3
-        elif cos_sim_max > 0.7:
-            cos_sim_max_coeff = 2
-        # elif cos_sim_max > 0.6:
+        # if cos_sim_max > 0.9:
+        #     cos_sim_max_coeff = 4
+        # elif cos_sim_max > 0.8:
+        #     cos_sim_max_coeff = 3
+        # elif cos_sim_max > 0.7:
         #     cos_sim_max_coeff = 2
-        else:
-            cos_sim_max_coeff = 1
+        # # elif cos_sim_max > 0.6:
+        # #     cos_sim_max_coeff = 2
+        # else:
+        #     cos_sim_max_coeff = 1
+        cos_sim_max_coeff = 2
         loss = energy_coeff * energy_mean + kl_coeff * kl_div + cos_sim_mean_coeff * cos_sim_mean + cos_sim_max_coeff * cos_sim_max
         loss.backward()
         optimizer.step()
 
         t = time.perf_counter() - start
         cos_sim_str = f'Cos_Sim: {cos_sim_max_coeff}*{cos_sim_max.item():.8f}, {cos_sim_mean_coeff}*{cos_sim_mean.item():.8f}, {cos_sims.min().item():.8f}'
-        info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {cos_sim_str}, {i+1}/{n_iter}, {t:.2f}')
+        fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}, {fidelities.min():.8f}'
+        info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {cos_sim_str}, {fidelity_str}, {i+1}/{n_iter}, {t:.2f}')
 
-        energy_tol, kl_tol, cos_sim_tol = 1e-2, 1e-5, 0.6
-        if i + 4 >= n_iter or (energy_gap < energy_tol and kl_div < kl_tol and cos_sim_max < cos_sim_tol):
+        energy_tol, fidelity_tol = 0.1, 0.7
+        if i + 4 >= n_iter or (energy_gap < energy_tol and fidelity_mean < fidelity_tol):
             time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
             path = f'./mats/VGON_nqd{n_qudits}_L{n_layers}_{time_str}'
             mat_dict = {
@@ -133,13 +154,17 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
                 'n_qubits': n_qubits,
                 'kl_div': kl_div.item(),
                 'batch_size': batch_size,
+                'energy_iter': energy_iter,
                 'energy': energy_mean.item(),
                 'n_train': f'{i+1}/{n_iter}',
                 'weight_decay': weight_decay,
                 'learning_rate': learning_rate,
                 'cos_sim_max': cos_sim_max.item(),
                 'cos_sim_mean': cos_sim_mean.item(),
-                'energy_iter': energy_iter.squeeze(),
+                'cos_sims': cos_sims.detach().cpu(),
+                'fidelity_max': fidelity_max.item(),
+                'fidelity_mean': fidelity_mean.item(),
+                'fidelities': fidelities.detach().cpu(),
                 'ground_state_energy': ground_state_energy
             }
             savemat(f'{path}.mat', mat_dict)
@@ -150,7 +175,7 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
 
 
 n_qudits = 4
-n_iter = 2000
+n_iter = 500
 batch_size = 8
 # coeffs = np.array([-0.74, 0.49]) * np.pi
 
@@ -162,8 +187,7 @@ if checkpoint:
     n_qudits = load['n_qudits'].item()
     batch_size = load['batch_size'].item()
 
-# n_layers = int(input('Input number of layers: '))
 # for theta in coeffs:
 theta = np.arctan(1 / 3)
-for n_layers in [2, 3, 4]:
+for n_layers in [3]:  #[2, 3, 4]:
     training(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)

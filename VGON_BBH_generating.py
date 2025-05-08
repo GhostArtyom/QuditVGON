@@ -102,6 +102,7 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
         count_str = f'{count}/{(i+1)*batch_size}'
 
         states = circuit_state(n_layers, params)
+        # states = states.detach().cpu().numpy()
         states = states[energy_ind].detach().cpu().numpy()
         for state in states:
             decoded_state = symmetric_decoding(state, n_qudits)

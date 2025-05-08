@@ -5,6 +5,7 @@ import numpy as np
 import pennylane as qml
 from logging import info
 from logger import Logger
+from typing import Literal
 from datetime import datetime
 from VAE_model import VAEModel
 from Hamiltonian import BBH_model
@@ -69,6 +70,25 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         qml.layer(qutrit_symmetric_ansatz, n_layers, params)
         return qml.expval(Ham)
 
+    def metric(p: torch.Tensor, q: torch.Tensor, metric_type: Literal['Euclidean', 'Cosine Similarity', 'JS Divergence', 'Hellinger Distance']):
+        if p.shape != q.shape:
+            raise ValueError(f'Shapes of p {p.shape} and q {q.shape} must match')
+        if metric_type == 'Euclidean':
+            return torch.norm(p - q, 2)
+        elif metric_type == 'Cosine Similarity':
+            return torch.cosine_similarity(p, q, dim=0)
+        elif metric_type == 'JS Divergence':
+            p = torch.softmax(p, dim=0)
+            q = torch.softmax(q, dim=0)
+            m = (p + q) / 2
+            return ((p * p.log2() + q * q.log2()) / 2 - m * m.log2()).sum()
+        elif metric_type == 'Hellinger Distance':
+            p = torch.softmax(p, dim=0)
+            q = torch.softmax(q, dim=0)
+            return ((p.sqrt() - q.sqrt()).pow(2).sum() / 2).sqrt()
+        else:
+            raise ValueError(f'Invalid metric_type: {metric_type}')
+
     qubit_Ham = BBH_model(n_qudits, theta)
     qutrit_Ham = qutrit_BBH_model(n_qudits, theta)
 
@@ -101,38 +121,37 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         kl_div = -0.5 * (1 + log_var - mean.pow(2) - log_var.exp())
         kl_div = kl_div.mean()
 
-        cos_sims = torch.empty((0), device=device)
-        for ind in combinations(range(batch_size), 2):
-            cos_sim = torch.cosine_similarity(params[ind[0], :], params[ind[1], :], dim=0)
-            cos_sims = torch.cat((cos_sims, cos_sim.unsqueeze(0)), dim=0)
-        cos_sim_max = cos_sims.max()
-        cos_sim_mean = cos_sims.mean()
-
         states = circuit_state(n_layers, params)
-        cos_sims = torch.empty((0), device=device)
+        similarity_metrics = torch.empty((0), device=device)
         fidelities = torch.empty((0), device=device)
         for ind in combinations(range(batch_size), 2):
-            cos_sim = torch.cosine_similarity(params[ind[0], :], params[ind[1], :], dim=0)
-            cos_sims = torch.cat((cos_sims, cos_sim.unsqueeze(0)), dim=0)
+            similarity_metric = metric(params[ind[0], :], params[ind[1], :], 'Cosine Similarity')
+            similarity_metrics = torch.cat((similarity_metrics, similarity_metric.unsqueeze(0)), dim=0)
             fidelity = qml.math.fidelity_statevector(states[ind[0]], states[ind[1]])
             fidelities = torch.cat((fidelities, fidelity.unsqueeze(0)), dim=0)
-        cos_sim_max = cos_sims.max()
-        cos_sim_mean = cos_sims.mean()
+        similarity_max = similarity_metrics.max()
+        similarity_mean = similarity_metrics.mean()
         fidelity_max = fidelities.max()
         fidelity_mean = fidelities.mean()
 
-        energy_coeff, kl_coeff, cos_sim_mean_coeff, cos_sim_max_coeff = 1, 1, 1, 2
-        loss = energy_coeff * energy_mean + kl_coeff * kl_div + cos_sim_mean_coeff * cos_sim_mean + cos_sim_max_coeff * cos_sim_max
+        energy_coeff, kl_coeff, similarity_mean_coeff = 1, 1, 1
+        if similarity_max > 0.9:
+            similarity_max_coeff = 2
+        elif similarity_max > 0.8:
+            similarity_max_coeff = 1.5
+        else:
+            similarity_max_coeff = 1
+        loss = energy_coeff * energy_mean + kl_coeff * kl_div + similarity_max_coeff * similarity_max + similarity_mean_coeff * similarity_mean
         loss.backward()
         optimizer.step()
 
         t = time.perf_counter() - start
-        cos_sim_str = f'Cos_Sim: {cos_sim_max_coeff}*{cos_sim_max.item():.8f}, {cos_sim_mean_coeff}*{cos_sim_mean.item():.8f}, {cos_sims.min().item():.8f}'
+        similarity_str = f'Similarity: {similarity_max_coeff}*{similarity_max.item():.8f}, {similarity_mean_coeff}*{similarity_mean.item():.8f}, {similarity_metrics.min().item():.8f}'
         fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}, {fidelities.min():.8f}'
-        info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {cos_sim_str}, {fidelity_str}, {i+1}/{n_iter}, {t:.2f}')
+        info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {similarity_str}, {fidelity_str}, {i+1}/{n_iter}, {t:.2f}')
 
-        energy_tol, fidelity_tol = 0.1, 0.7
-        if (i + 4) >= n_iter or (energy_gap < energy_tol and fidelity_mean < fidelity_tol):
+        energy_tol, similarity_tol, fidelity_tol = 0.1, 0.7, 0.7
+        if (i + 4) >= n_iter or (energy_gap < energy_tol and (similarity_max < similarity_tol or fidelity_mean < fidelity_tol)):
             time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
             path = f'./mats/VGON_nqd{n_qudits}_L{n_layers}_{time_str}'
             mat_dict = {
@@ -150,13 +169,13 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
                 'n_train': f'{i+1}/{n_iter}',
                 'weight_decay': weight_decay,
                 'learning_rate': learning_rate,
-                'cos_sim_max': cos_sim_max.item(),
-                'cos_sim_mean': cos_sim_mean.item(),
-                'cos_sims': cos_sims.detach().cpu(),
                 'fidelity_max': fidelity_max.item(),
                 'fidelity_mean': fidelity_mean.item(),
                 'fidelities': fidelities.detach().cpu(),
-                'ground_state_energy': ground_state_energy
+                'ground_state_energy': ground_state_energy,
+                'similarity_metric_max': similarity_max.item(),
+                'similarity_metric_mean': similarity_mean.item(),
+                'similarity_metrics': similarity_metrics.detach().cpu()
             }
             savemat(f'{path}.mat', mat_dict)
             torch.save(model.state_dict(), f'{path}.pt')
@@ -179,5 +198,5 @@ if checkpoint:
     batch_size = load['batch_size'].item()
 
 for theta in coeffs:
-    for n_layers in [3]:  # [2, 3, 4]:
+    for n_layers in [2, 3]:
         training(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)

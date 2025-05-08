@@ -10,6 +10,7 @@ from logger import Logger
 from scipy.io import loadmat
 from scipy.linalg import orth
 from VAE_model import VAEModel
+from datetime import datetime
 from Hamiltonian import BBH_model
 import torch.distributions as dists
 from utils import fidelity, updatemat
@@ -39,7 +40,8 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
     else:
         device = torch.device('cpu')
 
-    log = f'./logs/VGON_nqd{n_qudits}_generating_202502.log'
+    year_month = datetime.today().strftime('%Y%m')
+    log = f'./logs/VGON_nqd{n_qudits}_generating_{year_month}.log'
     logger = Logger(log)
     logger.add_handler()
     info(f'Load: {path}.mat, {n_train}')

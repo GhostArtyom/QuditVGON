@@ -5,6 +5,7 @@ import numpy as np
 import pennylane as qml
 from logging import info
 from logger import Logger
+from datetime import datetime
 from VAE_model import VAEModel
 from Hamiltonian import BBH_model
 from itertools import combinations
@@ -38,7 +39,8 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
     else:
         device = torch.device('cpu')
 
-    log = f'./logs/VGON_nqd{n_qudits}_L{n_layers}_phase_202502.log'
+    year_month = datetime.today().strftime('%Y%m')
+    log = f'./logs/VGON_nqd{n_qudits}_L{n_layers}_phase_{year_month}.log'
     logger = Logger(log)
     logger.add_handler()
 

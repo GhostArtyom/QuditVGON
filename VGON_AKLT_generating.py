@@ -8,6 +8,7 @@ import pennylane as qml
 from logging import info
 from logger import Logger
 from scipy.io import loadmat
+from datetime import datetime
 from VAE_model import VAEModel
 from Hamiltonian import AKLT_model
 import torch.distributions as dists
@@ -103,7 +104,8 @@ def generating(batch_size: int, n_test: int, energy_upper: float):
     info(f'Save: {path}.mat with count and overlaps')
 
 
-log = f'./logs/VGON_nqd{n_qudits}_generating_202502.log'
+year_month = datetime.today().strftime('%Y%m')
+log = f'./logs/VGON_nqd{n_qudits}_generating_{year_month}.log'
 logger = Logger(log)
 logger.add_handler()
 info(f'PyTorch Device: {device}')

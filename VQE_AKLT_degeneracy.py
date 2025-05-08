@@ -6,6 +6,7 @@ import pennylane as qml
 from logging import info
 from logger import Logger
 from scipy.io import savemat
+from datetime import datetime
 from Hamiltonian import AKLT_model
 import torch.distributions as dists
 from qutrit_synthesis import NUM_PR, two_qutrit_unitary_synthesis
@@ -50,7 +51,8 @@ def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
     return qml.expval(Ham)
 
 
-log = f'./logs/VQE_nqd{n_qudits}_degeneracy.log'
+year_month = datetime.today().strftime('%Y%m')
+log = f'./logs/VQE_nqd{n_qudits}_degeneracy_{year_month}.log'
 logger = Logger(log)
 logger.add_handler()
 info(f'PyTorch Device: {device}')

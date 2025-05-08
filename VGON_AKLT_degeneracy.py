@@ -6,6 +6,7 @@ import pennylane as qml
 from logging import info
 from logger import Logger
 from scipy.io import savemat
+from datetime import datetime
 from VAE_model import VAEModel
 from itertools import combinations
 from Hamiltonian import AKLT_model
@@ -62,7 +63,8 @@ def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
     return qml.expval(Ham)
 
 
-log = f'./logs/VGON_nqd{n_qudits}_degeneracy_202502.log'
+year_month = datetime.today().strftime('%Y%m')
+log = f'./logs/VGON_nqd{n_qudits}_degeneracy_{year_month}.log'
 logger = Logger(log)
 logger.add_handler()
 info(f'PyTorch Device: {device}')

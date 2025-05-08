@@ -66,7 +66,7 @@ def generating(batch_size: int, n_test: int, energy_upper: float):
     model.load_state_dict(state_dict)
     model.eval()
 
-    data_dist = dists.Uniform(0, 1).sample([n_samples, n_params])
+    data_dist = dists.Normal(0, 1).sample([n_samples, n_params])
     test_data = DataLoader(data_dist, batch_size=batch_size, shuffle=True, drop_last=True)
 
     ED_states = loadmat('./mats/ED_degeneracy.mat')[f'nqd{n_qudits}'][0, 1].T
@@ -77,18 +77,13 @@ def generating(batch_size: int, n_test: int, energy_upper: float):
     count, count_str = 0, ''
     start = time.perf_counter()
     for i, batch in enumerate(test_data):
-        for j in range(n_test):
-            with torch.no_grad():
-                params, _, _ = model(batch.to(device))
-            energy = circuit_expval(n_layers, params, Ham)
-            energy_str = f'Energy: {energy.max():.8f}, {energy.mean():.8f}, {energy.min():.8f}'
-            energy_ind = torch.where(energy < energy_upper)[0]
-            if len(energy_ind) >= 0.75 * batch_size:
-                count += len(energy_ind)
-                count_str = f'{count}/{(i+1)*batch_size}'
-                break
-            t = time.perf_counter() - start
-            info(f'{energy_str}, {len(energy_ind)}<{0.75*batch_size:.0f}, {j+1}/{i+1}/{n_test}, {t:.2f}')
+        with torch.no_grad():
+            params, _, _ = model(batch.to(device))
+        energy = circuit_expval(n_layers, params, Ham)
+        energy_str = f'Energy: {energy.max():.8f}, {energy.mean():.8f}, {energy.min():.8f}'
+        energy_ind = torch.where(energy < energy_upper)[0]
+        count += len(energy_ind)
+        count_str = f'{count}/{(i+1)*batch_size}'
 
         states = circuit_state(n_layers, params)
         states = states[energy_ind].detach().cpu().numpy()
@@ -113,6 +108,7 @@ info(f'Number of qudits: {n_qudits}')
 info(f'Number of qubits: {n_qubits}')
 info(f'Ground State Energy: {ground_state_energy:.4f}')
 
+n_test = 100  # int(input('Input number of test: '))
 pattern = f'(VGON_nqd{n_qudits}' + r'_\d{8}_\d{6}).mat'
 for name in sorted(os.listdir('./mats'), reverse=True):
     match = re.search(pattern, name)
@@ -131,7 +127,6 @@ for name in sorted(os.listdir('./mats'), reverse=True):
                 energy_upper = -3.95
             else:
                 energy_upper = -3.99
-            n_test = 100 if batch_size == 16 else int(input('Input number of test: '))
             if 'fidelity_max' in load and 'fidelity_mean' in load:
                 fidelity_max = load['fidelity_max'].item()
                 fidelity_mean = load['fidelity_mean'].item()

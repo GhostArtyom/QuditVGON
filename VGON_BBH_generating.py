@@ -74,7 +74,7 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
     ground_state_energy, ground_states = eigsh(qutrit_Ham, k=4, which='SA')
     ind = np.where(np.isclose(ground_state_energy, ground_state_energy.min()))
     ground_state_energy = ground_state_energy.min()
-    info(f'Ground State Energy: {ground_state_energy:.4f}')
+    info(f'Ground State Energy: {ground_state_energy:.8f}')
 
     ground_states = ground_states[:, ind[0]]
     ground_states = orth(ground_states).T
@@ -87,24 +87,19 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
     model.load_state_dict(state_dict)
     model.eval()
 
-    data_dist = dists.Uniform(0, 1).sample([n_samples, n_params])
+    data_dist = dists.Normal(0, 1).sample([n_samples, n_params])
     test_data = DataLoader(data_dist, batch_size=batch_size, shuffle=True, drop_last=True)
 
-    count, count_str = 0, f'{count}/{(i+1)*batch_size}'
+    count, count_str = 0, ''
     start = time.perf_counter()
     for i, batch in enumerate(test_data):
-        for j in range(n_test):
-            with torch.no_grad():
-                params, _, _ = model(batch.to(device))
-            energy = circuit_expval(n_layers, params, qubit_Ham)
-            energy_str = f'Energy: {energy.max():.8f}, {energy.mean():.8f}, {energy.min():.8f}, Gap: {energy.mean()-ground_state_energy:.4e}'
-            energy_ind = torch.where(energy < ground_state_energy + 0.1)[0]
-            if len(energy_ind) >= 0.75 * batch_size:
-                count += len(energy_ind)
-                count_str = f'{count}/{(i+1)*batch_size}'
-                break
-            t = time.perf_counter() - start
-            info(f'{energy_str}, {len(energy_ind)}<{0.75*batch_size:.0f}, {j+1}/{i+1}/{n_test}, {t:.2f}')
+        with torch.no_grad():
+            params, _, _ = model(batch.to(device))
+        energy = circuit_expval(n_layers, params, qubit_Ham)
+        energy_str = f'Energy: {energy.max():.8f}, {energy.mean():.8f}, {energy.min():.8f}, Gap: {energy.mean()-ground_state_energy:.4e}'
+        energy_ind = torch.where(energy < ground_state_energy + energy_gap)[0]
+        count += len(energy_ind)
+        count_str = f'{count}/{(i+1)*batch_size}'
 
         states = circuit_state(n_layers, params)
         states = states[energy_ind].detach().cpu().numpy()
@@ -121,8 +116,8 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
     logger.remove_handler()
 
 
-n_test, date = 20, 20250226
-pattern = r'(VGON_nqd\d+_L\d+_(\d{8})_\d{6}).mat'
+energy_gap, n_test, date = 0.1, 20, 20250508
+pattern = r'(VGON_nqd\d+_L\d+_(\d{8})_(\d{6})).mat'
 for name in sorted(os.listdir('./mats'), reverse=True):
     match = re.search(pattern, name)
     if match and date <= int(match.group(2)):
@@ -136,7 +131,4 @@ for name in sorted(os.listdir('./mats'), reverse=True):
             n_layers = load['n_layers'].item()
             n_qudits = load['n_qudits'].item()
             batch_size = load['batch_size'].item()
-            ground_state_energy = load['ground_state_energy'].item()
-            energy_gap = energy - ground_state_energy
-            # n_test = 100 if batch_size == 8 else int(input('Input number of test: '))
             generating(n_layers, n_qudits, n_test, batch_size, theta, phase, path)

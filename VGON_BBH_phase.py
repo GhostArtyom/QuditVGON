@@ -16,8 +16,8 @@ from torch.utils.data import DataLoader
 from exact_diagonalization import qutrit_BBH_model
 from qutrit_synthesis import NUM_PR, two_qutrit_unitary_synthesis
 
-np.set_printoptions(precision=8, linewidth=400)
-torch.set_printoptions(precision=8, linewidth=400)
+np.set_printoptions(precision=8, linewidth=200)
+torch.set_printoptions(precision=8, linewidth=200)
 
 
 def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: float, checkpoint: str = None):
@@ -83,7 +83,7 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         info(f'Load: state_dict of {checkpoint}.pt')
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
-    data_dist = dists.Uniform(-np.pi, np.pi).sample([n_samples, n_params])
+    data_dist = dists.Uniform(0, 1).sample([n_samples, n_params])
     train_data = DataLoader(data_dist, batch_size=batch_size, shuffle=True, drop_last=True)
 
     start = time.perf_counter()
@@ -121,18 +121,7 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         fidelity_max = fidelities.max()
         fidelity_mean = fidelities.mean()
 
-        energy_coeff, kl_coeff, cos_sim_mean_coeff = 1, 1, 1
-        # if cos_sim_max > 0.9:
-        #     cos_sim_max_coeff = 4
-        # elif cos_sim_max > 0.8:
-        #     cos_sim_max_coeff = 3
-        # elif cos_sim_max > 0.7:
-        #     cos_sim_max_coeff = 2
-        # # elif cos_sim_max > 0.6:
-        # #     cos_sim_max_coeff = 2
-        # else:
-        #     cos_sim_max_coeff = 1
-        cos_sim_max_coeff = 2
+        energy_coeff, kl_coeff, cos_sim_mean_coeff, cos_sim_max_coeff = 1, 1, 1, 2
         loss = energy_coeff * energy_mean + kl_coeff * kl_div + cos_sim_mean_coeff * cos_sim_mean + cos_sim_max_coeff * cos_sim_max
         loss.backward()
         optimizer.step()
@@ -143,7 +132,7 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {cos_sim_str}, {fidelity_str}, {i+1}/{n_iter}, {t:.2f}')
 
         energy_tol, fidelity_tol = 0.1, 0.7
-        if i + 4 >= n_iter or (energy_gap < energy_tol and fidelity_mean < fidelity_tol):
+        if (i + 4) >= n_iter or (energy_gap < energy_tol and fidelity_mean < fidelity_tol):
             time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
             path = f'./mats/VGON_nqd{n_qudits}_L{n_layers}_{time_str}'
             mat_dict = {
@@ -179,7 +168,7 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
 n_qudits = 4
 n_iter = 500
 batch_size = 8
-# coeffs = np.array([-0.74, 0.49]) * np.pi
+coeffs = [np.arctan(1 / 3)]
 
 checkpoint = None
 if checkpoint:
@@ -189,7 +178,6 @@ if checkpoint:
     n_qudits = load['n_qudits'].item()
     batch_size = load['batch_size'].item()
 
-# for theta in coeffs:
-theta = np.arctan(1 / 3)
-for n_layers in [3]:  #[2, 3, 4]:
-    training(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)
+for theta in coeffs:
+    for n_layers in [3]:  # [2, 3, 4]:
+        training(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)

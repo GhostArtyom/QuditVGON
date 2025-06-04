@@ -1,9 +1,11 @@
 import os
+import re
 import numpy as np
 from math import log
 from typing import List
 from functools import reduce
 from numpy.linalg import norm
+from datetime import datetime
 from fractions import Fraction
 from scipy.linalg import sqrtm
 from scipy.io import loadmat, savemat
@@ -11,6 +13,19 @@ from scipy.sparse import kron, csr_matrix
 
 DTYPE = np.float64
 CDTYPE = np.complex128
+
+
+def strptime(date_str):
+    if re.search(r'^\d{8}$', date_str):
+        return datetime.strptime(date_str, '%Y%m%d')
+    elif re.search(r'\d{8}_\d{6}', date_str):
+        return datetime.strptime(date_str, '%Y%m%d_%H%M%S')
+    else:
+        raise ValueError('Wrong input date string')
+
+
+def compare_datetime(date_str1, date_str2):
+    return strptime(date_str1) <= strptime(date_str2)
 
 
 def tensor_product(*args: tuple | list):

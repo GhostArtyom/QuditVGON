@@ -9,8 +9,8 @@ from logging import info
 from logger import Logger
 from scipy.io import loadmat
 from scipy.linalg import orth
-from VAE_model import VAEModel
 from datetime import datetime
+from VAE_model import VAEModel
 from Hamiltonian import BBH_model
 import torch.distributions as dists
 from utils import fidelity, updatemat

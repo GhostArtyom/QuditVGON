@@ -78,7 +78,7 @@ def circuit_ctrl_gate(name: str, pr: float, obj: int, ctrl: List[int]):
     '''The qubit circuit for different types of the qutrit controlled gate.
     Args:
         name (str): the name of the qutrit controlled gate.
-        pr (torch.Tensor|np.ndarray): the paramters of the circuit.
+        pr (float): the paramters of the controlled gate.
         obj (int): object qubit of the circuit.
         ctrl (List[int]): control qubits of the circuit.
     '''
@@ -94,6 +94,29 @@ def circuit_ctrl_gate(name: str, pr: float, obj: int, ctrl: List[int]):
         qml.ctrl(qml.PhaseShift(pr, obj), ctrl)
     else:
         raise ValueError(f'The gate name {name} is not in {gate_list}')
+
+
+def two_level_rotation_synthesis(pr: float, obj: List[int], ind: List[int], name: str):
+    '''Synthesize a qutrit two-level rotation gate with a qubit circuit.
+    Args:
+        pr (float): the paramters of the rotation gate.
+        obj (List[int]): object qubits of the circuit.
+        ind (List[int]): the subspace index of the qutrit two-level rotation gate.
+        name (str): the name of controlled gate.
+    '''
+    if len(obj) != 2:
+        raise ValueError(f'The number of object qubits {len(obj)} should be 2')
+    if len(ind) != 2:
+        raise ValueError(f'The qutrit unitary index length {len(ind)} should be 2')
+    if len(set(ind)) != len(ind):
+        raise ValueError(f'The qutrit unitary index {ind} cannot be repeated')
+    if min(ind) < 0 or max(ind) > 2:
+        raise ValueError(f'The qutrit unitary index {ind} should in 0 to 2')
+    if len(obj) != 2:
+        raise ValueError(f'The number of object qubits {len(obj)} should be 2')
+    circuit_ind(ind, obj)
+    circuit_ctrl_gate(name, pr, obj[-1], obj[0])
+    qml.adjoint(circuit_ind, lazy=False)(ind, obj)
 
 
 def two_level_unitary_synthesis(pr: torch.Tensor | np.ndarray, ind: List[int], obj: List[int]):

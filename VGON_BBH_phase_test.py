@@ -26,15 +26,13 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
     learning_rate = 1e-3
     n_qubits = 2 * n_qudits
     n_samples = batch_size * n_iter
-    # n_params_1 = 6 * n_qudits - 3
-    n_params_1 = 9 * n_qudits + 3 * (n_qudits - 1)
-    n_params = n_layers * n_params_1
+    n_params_per_layer = 12 * n_qudits - 3
+    n_params = n_layers * n_params_per_layer
     phase = 'arctan(1/3)' if theta == np.arctan(1 / 3) else f'{theta/np.pi:.2f}π'
 
     z_dim = 50
     list_z = np.arange(*np.floor(np.log2([n_params, z_dim])), -1)
     h_dim = np.power(2, list_z).astype(int)
-    print(n_params, n_params_1, list_z, h_dim)
 
     dev = qml.device('default.qubit', n_qubits)
     gpu_memory = gpus[0].memoryUtil if (gpus := GPUtil.getGPUs()) else 1
@@ -67,13 +65,13 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
 
     @qml.qnode(dev, interface='torch', diff_method='best')
     def circuit_state(n_layers: int, params: torch.Tensor):
-        params = params.transpose(0, 1).reshape(n_layers, n_params_1, batch_size)
+        params = params.transpose(0, 1).reshape(n_layers, n_params_per_layer, batch_size)
         qml.layer(qutrit_symmetric_ansatz, n_layers, params)
         return qml.state()
 
     @qml.qnode(dev, interface='torch', diff_method='best')
     def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
-        params = params.transpose(0, 1).reshape(n_layers, n_params_1, batch_size)
+        params = params.transpose(0, 1).reshape(n_layers, n_params_per_layer, batch_size)
         qml.layer(qutrit_symmetric_ansatz, n_layers, params)
         return qml.expval(Ham)
 
@@ -147,14 +145,13 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         optimizer.step()
 
         t = time.perf_counter() - start
-        similarity_str = f'Similarity: {similarity_max.item():.8f}, {similarity_mean_coeff}*{similarity_mean.item():.8f}, {similarity_metrics.min().item():.8f}'
-        fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}, {fidelities.min():.8f}'
+        similarity_str = f'Similarity: {similarity_max:.8f}, {similarity_mean_coeff}*{similarity_mean:.8f}'
+        fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}'
         info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {similarity_str}, {fidelity_str}, {i+1}/{n_iter}, {t:.2f}')
         # info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {i+1}/{n_iter}, {t:.2f}')
 
         energy_tol, similarity_tol, fidelity_tol = 0.1, 0.8, 0.8
         if (i + 4) >= n_iter or (energy_gap < energy_tol and (similarity_max < similarity_tol or fidelity_mean < fidelity_tol)):
-            # if (i + 1) >= n_iter or energy_gap < energy_tol:
             time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
             path = f'./mats/VGON_nqd{n_qudits}_L{n_layers}_{time_str}'
             mat_dict = {
@@ -188,7 +185,7 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
 
 
 n_qudits = 4
-n_iter = 500
+n_iter = 1000
 batch_size = 8
 coeffs = [np.arctan(1 / 3)]
 
@@ -201,6 +198,6 @@ if checkpoint:
     batch_size = load['batch_size'].item()
 
 for theta in coeffs:
-    for n_layers in [10]:
+    for n_layers in [5, 10, 15]:
         for similarity_mean_coeff in [0.6, 0.7, 0.8, 0.9]:
             training(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)

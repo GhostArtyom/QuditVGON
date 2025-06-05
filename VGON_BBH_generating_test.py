@@ -27,8 +27,8 @@ torch.set_printoptions(precision=8, linewidth=200)
 def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta: float, phase: str, path: str):
     n_qubits = 2 * n_qudits
     n_samples = batch_size * n_test
-    n_params_1 = 9 * n_qudits + 3 * (n_qudits - 1)
-    n_params = n_layers * n_params_1
+    n_params_per_layer = 12 * n_qudits - 3
+    n_params = n_layers * n_params_per_layer
 
     z_dim = 50
     list_z = np.arange(*np.floor(np.log2([n_params, z_dim])), -1)
@@ -63,13 +63,13 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
 
     @qml.qnode(dev, interface='torch', diff_method='best')
     def circuit_state(n_layers: int, params: torch.Tensor):
-        params = params.transpose(0, 1).reshape(n_layers, n_params_1, batch_size)
+        params = params.transpose(0, 1).reshape(n_layers, n_params_per_layer, batch_size)
         qml.layer(qutrit_symmetric_ansatz, n_layers, params)
         return qml.state()
 
     @qml.qnode(dev, interface='torch', diff_method='best')
     def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
-        params = params.transpose(0, 1).reshape(n_layers, n_params_1, batch_size)
+        params = params.transpose(0, 1).reshape(n_layers, n_params_per_layer, batch_size)
         qml.layer(qutrit_symmetric_ansatz, n_layers, params)
         return qml.expval(Ham)
 
@@ -79,12 +79,16 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
     ground_state_energy, ground_states = eigsh(qutrit_Ham, k=4, which='SA')
     ind = np.where(np.isclose(ground_state_energy, ground_state_energy.min()))
     ground_state_energy = ground_state_energy.min()
-    info(f'Ground State Energy: {ground_state_energy:.8f}')
+    energy_gap = load['energy'].item() - ground_state_energy
+    energy_gap_tol = np.ceil(energy_gap * 10) / 10
+    info(f'Ground State Energy: {ground_state_energy:.8f}, Gap Tolerance: {energy_gap_tol}')
 
     ground_states = ground_states[:, ind[0]]
     ground_states = orth(ground_states).T
     ground_states[np.abs(ground_states) < 1e-15] = 0
     degeneracy = ground_states.shape[0]
+    if degeneracy < 4:
+        raise ValueError(f'Wrong degeneracy {degeneracy}')
     overlaps = np.empty((0, degeneracy))
 
     state_dict = torch.load(f'{path}.pt', map_location=device, weights_only=True)
@@ -102,12 +106,11 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
             params, _, _ = model(batch.to(device))
         energy = circuit_expval(n_layers, params, qubit_Ham)
         energy_str = f'Energy: {energy.max():.8f}, {energy.mean():.8f}, {energy.min():.8f}, Gap: {energy.mean()-ground_state_energy:.4e}'
-        energy_ind = torch.where(energy < ground_state_energy + energy_gap)[0]
+        energy_ind = torch.where(energy < ground_state_energy + energy_gap_tol)[0]
         count += len(energy_ind)
         count_str = f'{count}/{(i+1)*batch_size}'
 
         states = circuit_state(n_layers, params)
-        # states = states.detach().cpu().numpy()
         states = states[energy_ind].detach().cpu().numpy()
         for state in states:
             decoded_state = symmetric_decoding(state, n_qudits)
@@ -122,9 +125,9 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
     logger.remove_handler()
 
 
-energy_gap, n_test, date = 0.1, 20, '20250605'
+n_test, date = 50, '20250606'
 pattern = r'(VGON_nqd\d+_L\d+_(\d{8}_\d{6})).mat'
-for name in sorted(os.listdir('./mats'), reverse=True):
+for name in sorted(os.listdir('./mats'), reverse=False):
     match = re.search(pattern, name)
     if match and compare_datetime(date, match.group(2)):
         path = f'./mats/{match.group(1)}'
@@ -133,7 +136,6 @@ for name in sorted(os.listdir('./mats'), reverse=True):
         if 'overlaps' not in load:
             theta = load['theta'].item()
             phase = load['phase'].item()
-            energy = load['energy'].item()
             n_layers = load['n_layers'].item()
             n_qudits = load['n_qudits'].item()
             batch_size = load['batch_size'].item()

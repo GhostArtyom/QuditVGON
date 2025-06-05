@@ -22,6 +22,7 @@ torch.set_printoptions(precision=8, linewidth=200)
 
 
 def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: float, checkpoint: str = None):
+    save_num = 4
     weight_decay = 0
     learning_rate = 1e-3
     n_qubits = 2 * n_qudits
@@ -170,7 +171,7 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         similarity_str = f'Similarity: {similarity_max:.8f}, {similarity_mean_coeff}*{similarity_mean:.8f}, {similarity_var:.4e}'
         info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {similarity_str}, {fidelity_str}, {i+1}/{n_iter}, {t:.2f}')
 
-        energy_tol, similarity_tol, fidelity_tol = 0.1, 0.2, 0.8
+        energy_tol, similarity_tol, fidelity_tol = 0.1, 0.2, 0.7
         if (i + save_num) >= n_iter or (energy_gap < energy_tol and (similarity_max < similarity_tol or fidelity_mean < fidelity_tol)):
             save_num -= 1
             time_str = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]
@@ -208,7 +209,6 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
 
 
 n_qudits = 4
-save_num = 4
 n_iter = 1000
 batch_size = 8
 coeffs = [np.arctan(1 / 3)]

@@ -123,7 +123,7 @@ for i, batch in enumerate(train_data):
     energy_gap = energy_mean - ground_state_energy
     energy_tol, kl_tol, fidelity_tol = 1e-2, 1e-5, 0.98
     if (i + 1) % 500 == 0 or i + 1 >= n_iter or (energy_gap < energy_tol and fidelity_max < fidelity_tol):
-        time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
+        time_str = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]
         path = f'./mats/VGON_nqd{n_qudits}_{time_str}'
         mat_dict = {
             'beta': beta,

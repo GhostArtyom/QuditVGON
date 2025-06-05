@@ -85,7 +85,7 @@ def running(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: f
         info(f'Energy: {energy_mean:.8f}, {energy_gap:.4e}, {i+1}/{n_iter}, {t:.2f}')
 
     params = params.detach().cpu().numpy()
-    time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
+    time_str = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]
     path = f'./mats/VQE_nqd{n_qudits}_L{n_layers}_{time_str}.mat'
     mat_dict = {
         'theta': theta,

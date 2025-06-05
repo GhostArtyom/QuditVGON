@@ -92,7 +92,7 @@ def running(n_iter: int):
         'weight_decay': weight_decay,
         'learning_rate': learning_rate
     }
-    time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
+    time_str = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]
     path = f'./mats/VQE_nqd{n_qudits}_{time_str}.mat'
     savemat(path, mat_dict)
     info(f'Save: {path}')

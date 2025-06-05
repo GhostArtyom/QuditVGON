@@ -152,7 +152,7 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
 
         energy_tol, similarity_tol, fidelity_tol = 0.1, 0.7, 0.7
         if (i + 4) >= n_iter or (energy_gap < energy_tol and (similarity_max < similarity_tol or fidelity_mean < fidelity_tol)):
-            time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
+            time_str = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]
             path = f'./mats/VGON_nqd{n_qudits}_L{n_layers}_{time_str}'
             mat_dict = {
                 'theta': theta,

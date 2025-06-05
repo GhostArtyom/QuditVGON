@@ -45,11 +45,13 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
     log = f'./logs/VGON_nqd{n_qudits}_generating_{year_month}.log'
     logger = Logger(log)
     logger.add_handler()
-    info(f'Load: {path}.mat, {n_train}')
+    info(f'Load: {path}, {n_train}')
     info(f'PyTorch Device: {device}')
     info(f'Number of layers: {n_layers}')
     info(f'Number of qudits: {n_qudits}')
     info(f'Number of qubits: {n_qubits}')
+    info(f'Number of params: {n_params}')
+    info(f'Size of Encoder: {h_dim}')
     info(f'Coefficient phase: {phase}')
 
     def qutrit_symmetric_ansatz(params: torch.Tensor):
@@ -76,7 +78,7 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
     qubit_Ham = BBH_model(n_qudits, theta)
     qutrit_Ham = qutrit_BBH_model(n_qudits, theta)
 
-    ground_state_energy, ground_states = eigsh(qutrit_Ham, k=4, which='SA')
+    ground_state_energy, ground_states = eigsh(qutrit_Ham, k=6, which='SA')
     ind = np.where(np.isclose(ground_state_energy, ground_state_energy.min()))
     ground_state_energy = ground_state_energy.min()
     energy_gap = load['energy'].item() - ground_state_energy
@@ -87,11 +89,11 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
     ground_states = orth(ground_states).T
     ground_states[np.abs(ground_states) < 1e-15] = 0
     degeneracy = ground_states.shape[0]
-    if degeneracy < 4:
-        raise ValueError(f'Wrong degeneracy {degeneracy}')
     overlaps = np.empty((0, degeneracy))
+    if degeneracy < 4:
+        raise ValueError(f'Wrong degeneracy {degeneracy} < 4')
 
-    state_dict = torch.load(f'{path}.pt', map_location=device, weights_only=True)
+    state_dict = torch.load(f'{path[:-4]}.pt', map_location=device, weights_only=True)
     model = VAEModel(n_params, h_dim, z_dim).to(device)
     model.load_state_dict(state_dict)
     model.eval()
@@ -120,18 +122,18 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
         t = time.perf_counter() - start
         info(f'{energy_str}, {count_str}, {i+1}/{n_test}, {t:.2f}')
 
-    updatemat(f'{path}.mat', {'count': count_str, 'overlaps': overlaps})
-    info(f'Save: {path}.mat with count and overlaps')
+    updatemat(path, {'count': count_str, 'overlaps': overlaps})
+    info(f'Save: {path} with count and overlaps')
     logger.remove_handler()
 
 
 n_test, date = 50, '20250606'
-pattern = r'(VGON_nqd\d+_L\d+_(\d{8}_\d{6})).mat'
+pattern = r'VGON_nqd\d+_L\d+_(\d{8}_\d{6}).mat'
 for name in sorted(os.listdir('./mats'), reverse=False):
     match = re.search(pattern, name)
-    if match and compare_datetime(date, match.group(2)):
-        path = f'./mats/{match.group(1)}'
-        load = loadmat(f'{path}.mat')
+    if match and compare_datetime(date, match.group(1)):
+        path = f'./mats/{name}'
+        load = loadmat(path)
         n_train = load['n_train'].item()
         if 'overlaps' not in load:
             theta = load['theta'].item()

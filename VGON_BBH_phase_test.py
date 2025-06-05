@@ -50,8 +50,10 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
     info(f'Number of layers: {n_layers}')
     info(f'Number of qudits: {n_qudits}')
     info(f'Number of qubits: {n_qubits}')
+    info(f'Number of params: {n_params}')
     info(f'Weight Decay: {weight_decay:.0e}')
     info(f'Learning Rate: {learning_rate:.0e}')
+    info(f'Size of Encoder: {h_dim}')
     info(f'Coefficient phase: {phase}')
 
     def qutrit_symmetric_ansatz(params: torch.Tensor):
@@ -136,21 +138,39 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
             fidelities = torch.cat((fidelities, fidelity.unsqueeze(0)), dim=0)
         similarity_max = similarity_metrics.max()
         similarity_mean = similarity_metrics.mean()
+        similarity_var = similarity_metrics.var()
         fidelity_max = fidelities.max()
         fidelity_mean = fidelities.mean()
+        fidelity_var = fidelities.var()
 
         energy_coeff, kl_coeff = 1, 1
+        if similarity_mean > 0.9:
+            similarity_mean_coeff = 2
+        elif similarity_mean > 0.8:
+            similarity_mean_coeff = 1.5
+        elif similarity_mean > 0.7:
+            similarity_mean_coeff = 1
+        elif similarity_mean > 0.6:
+            similarity_mean_coeff = 0.9
+        elif similarity_mean > 0.5:
+            similarity_mean_coeff = 0.8
+        elif similarity_mean > 0.4:
+            similarity_mean_coeff = 0.7
+        elif similarity_mean > 0.3:
+            similarity_mean_coeff = 0.6
+        else:
+            similarity_mean_coeff = 0.5
+
         loss = energy_coeff * energy_mean + kl_coeff * kl_div + similarity_mean_coeff * similarity_mean
         loss.backward()
         optimizer.step()
 
         t = time.perf_counter() - start
-        similarity_str = f'Similarity: {similarity_max:.8f}, {similarity_mean_coeff}*{similarity_mean:.8f}'
-        fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}'
+        similarity_str = f'Similarity: {similarity_max:.8f}, {similarity_mean_coeff}*{similarity_mean:.8f}, {similarity_var:.4e}'
+        fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}, {fidelity_var:.4e}'
         info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {similarity_str}, {fidelity_str}, {i+1}/{n_iter}, {t:.2f}')
-        # info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {i+1}/{n_iter}, {t:.2f}')
 
-        energy_tol, similarity_tol, fidelity_tol = 0.1, 0.8, 0.8
+        energy_tol, similarity_tol, fidelity_tol = 0.1, 0.2, 0.8
         if (i + 4) >= n_iter or (energy_gap < energy_tol and (similarity_max < similarity_tol or fidelity_mean < fidelity_tol)):
             time_str = time.strftime('%Y%m%d_%H%M%S', time.localtime())
             path = f'./mats/VGON_nqd{n_qudits}_L{n_layers}_{time_str}'
@@ -169,12 +189,14 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
                 'n_train': f'{i+1}/{n_iter}',
                 'weight_decay': weight_decay,
                 'learning_rate': learning_rate,
+                'fidelity_var': fidelity_var.item(),
                 'fidelity_max': fidelity_max.item(),
                 'fidelity_mean': fidelity_mean.item(),
                 'fidelities': fidelities.detach().cpu(),
+                'similarity_var': similarity_var.item(),
+                'similarity_max': similarity_max.item(),
+                'similarity_mean': similarity_mean.item(),
                 'ground_state_energy': ground_state_energy,
-                'similarity_metric_max': similarity_max.item(),
-                'similarity_metric_mean': similarity_mean.item(),
                 'similarity_metrics': similarity_metrics.detach().cpu()
             }
             savemat(f'{path}.mat', mat_dict)
@@ -198,6 +220,5 @@ if checkpoint:
     batch_size = load['batch_size'].item()
 
 for theta in coeffs:
-    for n_layers in [5, 10, 15]:
-        for similarity_mean_coeff in [0.6, 0.7, 0.8, 0.9]:
-            training(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)
+    for n_layers in [5, 8, 12]:
+        training(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)

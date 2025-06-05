@@ -1,5 +1,6 @@
 import os
 import re
+import winreg
 import numpy as np
 from math import log
 from typing import List
@@ -13,6 +14,13 @@ from scipy.sparse import kron, csr_matrix
 
 DTYPE = np.float64
 CDTYPE = np.complex128
+
+
+def check_theme():
+    reg = winreg.ConnectRegistry(None, winreg.HKEY_CURRENT_USER)
+    key = winreg.OpenKey(reg, r'SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize')
+    value, _ = winreg.QueryValueEx(key, 'AppsUseLightTheme')
+    return value
 
 
 def strptime(date_str):

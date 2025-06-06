@@ -127,7 +127,7 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
     logger.remove_handler()
 
 
-n_test, date = 50, '20250606'
+n_test, date = 50, '20250607'
 pattern = r'VGON_nqd\d+_L\d+_(\d{8}_\d{6})_\d{3}.mat'
 for name in sorted(os.listdir('./mats'), reverse=False):
     match = re.search(pattern, name)

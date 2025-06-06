@@ -130,21 +130,30 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         kl_div = kl_div.mean()
 
         states = circuit_state(n_layers, params)
-        similarity_metrics = torch.empty((0), device=device)
         fidelities = torch.empty((0), device=device)
+        similarity_metrics = torch.empty((0), device=device)
         for ind in combinations(range(batch_size), 2):
-            similarity_metric = metric(params[ind[0], :], params[ind[1], :], 'Cosine Similarity')
-            similarity_metrics = torch.cat((similarity_metrics, similarity_metric.unsqueeze(0)), dim=0)
             fidelity = qml.math.fidelity_statevector(states[ind[0]], states[ind[1]])
             fidelities = torch.cat((fidelities, fidelity.unsqueeze(0)), dim=0)
-        similarity_max = similarity_metrics.max()
-        similarity_mean = similarity_metrics.mean()
-        similarity_var = similarity_metrics.var()
+            similarity_metric = metric(params[ind[0], :], params[ind[1], :], 'Cosine Similarity')
+            similarity_metrics = torch.cat((similarity_metrics, similarity_metric.unsqueeze(0)), dim=0)
+        fidelity_var = fidelities.var()
         fidelity_max = fidelities.max()
         fidelity_mean = fidelities.mean()
-        fidelity_var = fidelities.var()
+        similarity_var = similarity_metrics.var()
+        similarity_max = similarity_metrics.max()
+        similarity_mean = similarity_metrics.mean()
 
         energy_coeff, kl_coeff = 1, 1
+        if similarity_max > 0.9:
+            similarity_max_coeff = 1
+        elif similarity_max > 0.8:
+            similarity_max_coeff = 0.5
+        elif similarity_max > 0.7:
+            similarity_max_coeff = 0.3
+        else:
+            similarity_max_coeff = 0.1
+
         if similarity_mean > 0.9:
             similarity_mean_coeff = 2
         elif similarity_mean > 0.8:
@@ -159,19 +168,21 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
             similarity_mean_coeff = 0.7
         elif similarity_mean > 0.3:
             similarity_mean_coeff = 0.6
-        else:
+        elif similarity_mean > 0.2:
             similarity_mean_coeff = 0.5
+        else:
+            similarity_mean_coeff = 0.4
 
-        loss = energy_coeff * energy_mean + kl_coeff * kl_div + similarity_mean_coeff * similarity_mean
+        loss = energy_coeff * energy_mean + kl_coeff * kl_div + similarity_max_coeff * similarity_max + similarity_mean_coeff * similarity_mean
         loss.backward()
         optimizer.step()
 
         t = time.perf_counter() - start
         fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}, {fidelity_var:.4e}'
-        similarity_str = f'Similarity: {similarity_max:.8f}, {similarity_mean_coeff}*{similarity_mean:.8f}, {similarity_var:.4e}'
+        similarity_str = f'Similarity: {similarity_max_coeff}*{similarity_max:.8f}, {similarity_mean_coeff}*{similarity_mean:.8f}, {similarity_var:.4e}'
         info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {similarity_str}, {fidelity_str}, {i+1}/{n_iter}, {t:.2f}')
 
-        energy_tol, similarity_tol, fidelity_tol = 0.1, 0.2, 0.7
+        energy_tol, similarity_tol, fidelity_tol = 0.1, 0.8, 0.8
         if (i + save_num) >= n_iter or (energy_gap < energy_tol and (similarity_max < similarity_tol or fidelity_mean < fidelity_tol)):
             save_num -= 1
             time_str = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]

@@ -1,6 +1,6 @@
 import os
 import re
-import winreg
+import sys
 import numpy as np
 from math import log
 from typing import List
@@ -17,23 +17,32 @@ CDTYPE = np.complex128
 
 
 def check_theme():
-    reg = winreg.ConnectRegistry(None, winreg.HKEY_CURRENT_USER)
-    key = winreg.OpenKey(reg, r'SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize')
-    value, _ = winreg.QueryValueEx(key, 'AppsUseLightTheme')
+    '''Check Windows system theme, return 0 (dark) or 1 (light)'''
+    if 'win' in sys.platform:
+        import winreg
+        reg = winreg.ConnectRegistry(None, winreg.HKEY_CURRENT_USER)
+        key = winreg.OpenKey(reg, r'SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize')
+        value, _ = winreg.QueryValueEx(key, 'AppsUseLightTheme')
     return value
 
 
-def strptime(date_str):
-    if re.search(r'^\d{8}$', date_str):
-        return datetime.strptime(date_str, '%Y%m%d')
-    elif re.search(r'\d{8}_\d{6}', date_str):
-        return datetime.strptime(date_str, '%Y%m%d_%H%M%S')
+def strptime(date_string):
+    '''Return a datetime corresponding to the date_string'''
+    if re.search(r'\d{8}_\d{6}', date_string):
+        return datetime.strptime(date_string, '%Y%m%d_%H%M%S')
+    elif re.search(r'\d{8}_\d{4}', date_string):
+        return datetime.strptime(date_string, '%Y%m%d_%H%M')
+    elif re.search(r'\d{8}_\d{2}', date_string):
+        return datetime.strptime(date_string, '%Y%m%d_%H')
+    elif re.search(r'\d{8}', date_string):
+        return datetime.strptime(date_string, '%Y%m%d')
     else:
-        raise ValueError('Wrong input date string')
+        raise ValueError(f'Wrong input date string {date_string}')
 
 
-def compare_datetime(date_str1, date_str2):
-    return strptime(date_str1) <= strptime(date_str2)
+def compare_datetime(date_string1, date_string2):
+    '''Compare the order of two date strings'''
+    return strptime(date_string1) <= strptime(date_string2)
 
 
 def tensor_product(*args: tuple | list):

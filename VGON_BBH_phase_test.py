@@ -148,9 +148,11 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         if similarity_max > 0.9:
             similarity_max_coeff = 1
         elif similarity_max > 0.8:
-            similarity_max_coeff = 0.5
+            similarity_max_coeff = 0.8
         elif similarity_max > 0.7:
-            similarity_max_coeff = 0.3
+            similarity_max_coeff = 0.5
+        elif similarity_max > 0.6:
+            similarity_max_coeff = 0.2
         else:
             similarity_max_coeff = 0.1
 
@@ -179,10 +181,10 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
 
         t = time.perf_counter() - start
         fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}, {fidelity_var:.4e}'
-        similarity_str = f'Similarity: {similarity_max_coeff}*{similarity_max:.8f}, {similarity_mean_coeff}*{similarity_mean:.8f}, {similarity_var:.4e}'
+        similarity_str = f'Similarity: {similarity_max_coeff:.1f}*{similarity_max:.8f}, {similarity_mean_coeff:.1f}*{similarity_mean:.8f}, {similarity_var:.4e}'
         info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {similarity_str}, {fidelity_str}, {i+1}/{n_iter}, {t:.2f}')
 
-        energy_tol, similarity_tol, fidelity_tol = 0.1, 0.8, 0.8
+        energy_tol, similarity_tol, fidelity_tol = 0.1, 0.6, 0.8
         if (i + save_num) >= n_iter or (energy_gap < energy_tol and (similarity_max < similarity_tol or fidelity_mean < fidelity_tol)):
             save_num -= 1
             time_str = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]
@@ -220,7 +222,7 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
 
 
 n_qudits = 4
-n_iter = 1000
+n_iter = 2000
 batch_size = 8
 coeffs = [np.arctan(1 / 3)]
 
@@ -233,5 +235,5 @@ if checkpoint:
     batch_size = load['batch_size'].item()
 
 for theta in coeffs:
-    for n_layers in [5, 8, 12]:
+    for n_layers in [6, 7, 8, 9, 10]:
         training(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)

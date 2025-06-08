@@ -17,7 +17,7 @@ from scipy.sparse.linalg import eigsh
 from torch.utils.data import DataLoader
 from qudit_mapping import symmetric_decoding
 from exact_diagonalization import qutrit_BBH_model
-from utils import fidelity, updatemat, compare_datetime
+from utils import fidelity, updatemat, extract_datetime, compare_datetime
 from qutrit_synthesis import single_qutrit_unitary_synthesis, controlled_diagonal_synthesis
 
 np.set_printoptions(precision=8, linewidth=200)
@@ -129,7 +129,8 @@ def generating(n_layers: int, n_qudits: int, n_test: int, batch_size: int, theta
 
 n_test, date = 50, '20250607'
 pattern = r'VGON_nqd\d+_L\d+_(\d{8}_\d{6})_\d{3}.mat'
-for name in sorted(os.listdir('./mats'), reverse=False):
+files_with_datetime = filter(extract_datetime, os.listdir('./mats'))
+for name in sorted(files_with_datetime, key=extract_datetime):
     match = re.search(pattern, name)
     if match and compare_datetime(date, match.group(1)):
         path = f'./mats/{name}'

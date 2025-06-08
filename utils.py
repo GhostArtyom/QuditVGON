@@ -16,33 +16,29 @@ DTYPE = np.float64
 CDTYPE = np.complex128
 
 
-def check_theme():
+def check_theme() -> int:
     '''Check Windows system theme, return 0 (dark) or 1 (light)'''
-    if 'win' in sys.platform:
-        import winreg
-        reg = winreg.ConnectRegistry(None, winreg.HKEY_CURRENT_USER)
-        key = winreg.OpenKey(reg, r'SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize')
-        value, _ = winreg.QueryValueEx(key, 'AppsUseLightTheme')
+    if 'win' not in sys.platform:
+        return 1
+    import winreg
+    reg = winreg.ConnectRegistry(None, winreg.HKEY_CURRENT_USER)
+    key = winreg.OpenKey(reg, r'SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize')
+    value, _ = winreg.QueryValueEx(key, 'AppsUseLightTheme')
     return value
 
 
-def strptime(date_string):
+def extract_datetime(date_string: str) -> datetime | None:
     '''Return a datetime corresponding to the date_string'''
-    if re.search(r'\d{8}_\d{6}', date_string):
-        return datetime.strptime(date_string, '%Y%m%d_%H%M%S')
-    elif re.search(r'\d{8}_\d{4}', date_string):
-        return datetime.strptime(date_string, '%Y%m%d_%H%M')
-    elif re.search(r'\d{8}_\d{2}', date_string):
-        return datetime.strptime(date_string, '%Y%m%d_%H')
-    elif re.search(r'\d{8}', date_string):
-        return datetime.strptime(date_string, '%Y%m%d')
-    else:
-        raise ValueError(f'Wrong input date string {date_string}')
+    patterns = {r'\d{8}_\d{6}': '%Y%m%d_%H%M%S', r'\d{8}_\d{4}': '%Y%m%d_%H%M', r'\d{8}_\d{2}': '%Y%m%d_%H', r'\d{8}': '%Y%m%d'}
+    for pattern, format in patterns.items():
+        if match := re.search(pattern, date_string):
+            return datetime.strptime(match.group(0), format)
+    return None
 
 
-def compare_datetime(date_string1, date_string2):
+def compare_datetime(date_string1: str, date_string2: str) -> bool:
     '''Compare the order of two date strings'''
-    return strptime(date_string1) <= strptime(date_string2)
+    return extract_datetime(date_string1) <= extract_datetime(date_string2)
 
 
 def tensor_product(*args: tuple | list):

@@ -67,12 +67,6 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
             controlled_diagonal_synthesis(params[j:j + 3], 2, obj[-1], obj[::-1][1:])
 
     @qml.qnode(dev, interface='torch', diff_method='best')
-    def circuit_state(n_layers: int, params: torch.Tensor):
-        params = params.transpose(0, 1).reshape(n_layers, n_params_per_layer, batch_size)
-        qml.layer(qutrit_symmetric_ansatz, n_layers, params)
-        return qml.state()
-
-    @qml.qnode(dev, interface='torch', diff_method='best')
     def circuit_expval(n_layers: int, params: torch.Tensor, Ham):
         params = params.transpose(0, 1).reshape(n_layers, n_params_per_layer, batch_size)
         qml.layer(qutrit_symmetric_ansatz, n_layers, params)
@@ -129,17 +123,10 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         kl_div = -0.5 * (1 + log_var - mean.pow(2) - log_var.exp())
         kl_div = kl_div.mean()
 
-        states = circuit_state(n_layers, params)
-        fidelities = torch.empty((0), device=device)
         similarity_metrics = torch.empty((0), device=device)
         for ind in combinations(range(batch_size), 2):
-            fidelity = qml.math.fidelity_statevector(states[ind[0]], states[ind[1]])
-            fidelities = torch.cat((fidelities, fidelity.unsqueeze(0)), dim=0)
             similarity_metric = metric(params[ind[0], :], params[ind[1], :], 'Cosine Similarity')
             similarity_metrics = torch.cat((similarity_metrics, similarity_metric.unsqueeze(0)), dim=0)
-        fidelity_var = fidelities.var()
-        fidelity_max = fidelities.max()
-        fidelity_mean = fidelities.mean()
         similarity_var = similarity_metrics.var()
         similarity_max = similarity_metrics.max()
         similarity_mean = similarity_metrics.mean()
@@ -150,8 +137,10 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         elif similarity_max > 0.8:
             similarity_max_coeff = 0.8
         elif similarity_max > 0.7:
-            similarity_max_coeff = 0.5
+            similarity_max_coeff = 0.6
         elif similarity_max > 0.6:
+            similarity_max_coeff = 0.4
+        elif similarity_max > 0.5:
             similarity_max_coeff = 0.2
         else:
             similarity_max_coeff = 0.1
@@ -180,12 +169,11 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
         optimizer.step()
 
         t = time.perf_counter() - start
-        fidelity_str = f'Fidelity: {fidelity_max:.8f}, {fidelity_mean:.8f}, {fidelity_var:.4e}'
         similarity_str = f'Similarity: {similarity_max_coeff:.1f}*{similarity_max:.8f}, {similarity_mean_coeff:.1f}*{similarity_mean:.8f}, {similarity_var:.4e}'
-        info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {similarity_str}, {fidelity_str}, {i+1}/{n_iter}, {t:.2f}')
+        info(f'Loss: {loss:.8f}, Energy: {energy_mean:.8f}, {energy_gap:.4e}, KL: {kl_div:.4e}, {similarity_str}, {i+1}/{n_iter}, {t:.2f}')
 
-        energy_tol, similarity_tol, fidelity_tol = 0.1, 0.6, 0.8
-        if (i + save_num) >= n_iter or (energy_gap < energy_tol and (similarity_max < similarity_tol or fidelity_mean < fidelity_tol)):
+        energy_tol, similarity_max_tol, similarity_mean_tol = 0.1, 0.6, 0.1
+        if (i + save_num) >= n_iter or (energy_gap < energy_tol and similarity_max < similarity_max_tol and similarity_mean < similarity_mean_tol):
             save_num -= 1
             time_str = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]
             path = f'./mats/VGON_nqd{n_qudits}_L{n_layers}_{time_str}'
@@ -204,10 +192,6 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
                 'n_train': f'{i+1}/{n_iter}',
                 'weight_decay': weight_decay,
                 'learning_rate': learning_rate,
-                'fidelity_var': fidelity_var.item(),
-                'fidelity_max': fidelity_max.item(),
-                'fidelity_mean': fidelity_mean.item(),
-                'fidelities': fidelities.detach().cpu(),
                 'similarity_var': similarity_var.item(),
                 'similarity_max': similarity_max.item(),
                 'similarity_mean': similarity_mean.item(),
@@ -235,5 +219,5 @@ if checkpoint:
     batch_size = load['batch_size'].item()
 
 for theta in coeffs:
-    for n_layers in [6, 7, 8, 9, 10]:
+    for n_layers in [5, 6, 7, 8, 9, 10]:
         training(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)

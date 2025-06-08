@@ -140,10 +140,8 @@ def training(n_layers: int, n_qudits: int, n_iter: int, batch_size: int, theta: 
             similarity_max_coeff = 0.6
         elif similarity_max > 0.6:
             similarity_max_coeff = 0.4
-        elif similarity_max > 0.5:
-            similarity_max_coeff = 0.2
         else:
-            similarity_max_coeff = 0.1
+            similarity_max_coeff = 0.2
 
         if similarity_mean > 0.9:
             similarity_mean_coeff = 2
@@ -219,5 +217,5 @@ if checkpoint:
     batch_size = load['batch_size'].item()
 
 for theta in coeffs:
-    for n_layers in [5, 6, 7, 8, 9, 10]:
+    for n_layers in [6, 7, 8]:
         training(n_layers, n_qudits, n_iter, batch_size, theta, checkpoint)
